@@ -1,0 +1,5 @@
+target
+tmp
+.git
+.codebase-memory
+**/.DS_Store

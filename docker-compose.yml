@@ -1,0 +1,78 @@
+services:
+  gatebase-init:
+    build: .
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["mkdir -p /var/lib/gatebase && test -f /var/lib/gatebase/session.key || head -c 32 /dev/urandom > /var/lib/gatebase/session.key"]
+    volumes:
+      - ./tmp:/var/lib/gatebase
+
+  gatebase-broker:
+    build: .
+    command: ["broker", "--config", "/etc/gatebase/gatebase.yaml"]
+    depends_on:
+      gatebase-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./examples/gatebase.compose.yaml:/etc/gatebase/gatebase.yaml:ro
+      - ./tmp:/var/lib/gatebase
+    ports:
+      - "8080:8080"
+
+  gatebase-proxy-postgres:
+    build: .
+    command: ["proxy", "postgres", "--config", "/etc/gatebase/gatebase.yaml"]
+    depends_on:
+      gatebase-init:
+        condition: service_completed_successfully
+      gatebase-postgres:
+        condition: service_healthy
+    volumes:
+      - ./examples/gatebase.compose.yaml:/etc/gatebase/gatebase.yaml:ro
+      - ./tmp:/var/lib/gatebase
+    environment:
+      PG_UPSTREAM_USER: gatebase
+      PG_UPSTREAM_PASSWORD: gatebase
+    ports:
+      - "15432:15432"
+
+  gatebase-proxy-mysql:
+    build: .
+    command: ["proxy", "mysql", "--config", "/etc/gatebase/gatebase.yaml"]
+    depends_on:
+      gatebase-init:
+        condition: service_completed_successfully
+      gatebase-mysql:
+        condition: service_healthy
+    volumes:
+      - ./examples/gatebase.compose.yaml:/etc/gatebase/gatebase.yaml:ro
+      - ./tmp:/var/lib/gatebase
+    environment:
+      MYSQL_UPSTREAM_USER: gatebase
+      MYSQL_UPSTREAM_PASSWORD: gatebase
+    ports:
+      - "13306:13306"
+
+  gatebase-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: gatebase
+      POSTGRES_PASSWORD: gatebase
+      POSTGRES_DB: app
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gatebase -d app"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  gatebase-mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: gatebase-root
+      MYSQL_DATABASE: app
+      MYSQL_USER: gatebase
+      MYSQL_PASSWORD: gatebase
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -ugatebase -pgatebase --silent"]
+      interval: 2s
+      timeout: 2s
+      retries: 30

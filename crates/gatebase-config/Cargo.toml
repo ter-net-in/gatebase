@@ -1,0 +1,14 @@
+[package]
+name = "gatebase-config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+gatebase-core = { path = "../gatebase-core" }
+serde.workspace = true
+serde_yaml.workspace = true

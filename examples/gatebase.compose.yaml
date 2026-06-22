@@ -1,0 +1,58 @@
+server:
+  public_url: "http://localhost:8080"
+  broker_listen: "0.0.0.0:8080"
+
+metadata:
+  sqlite_path: "/var/lib/gatebase/gatebase.db"
+
+sessions:
+  default_ttl: "15m"
+  max_ttl: "30m"
+  signing_key_file: "/var/lib/gatebase/session.key"
+
+access:
+  allowed_repositories:
+    - "gatebase/gatebase"
+
+audit:
+  fail_closed: true
+  sinks:
+    - type: "sqlite"
+    - type: "jsonl"
+      path: "/var/lib/gatebase/audit.jsonl"
+
+targets:
+  - name: "prod-pg"
+    engine: "postgres"
+    listen: "0.0.0.0:15432"
+    public_host: "127.0.0.1"
+    public_port: 15432
+    upstream: "gatebase-postgres:5432"
+    database: "app"
+    credentials:
+      username_env: "PG_UPSTREAM_USER"
+      password_env: "PG_UPSTREAM_PASSWORD"
+  - name: "prod-mysql"
+    engine: "mysql"
+    listen: "0.0.0.0:13306"
+    public_host: "127.0.0.1"
+    public_port: 13306
+    upstream: "gatebase-mysql:3306"
+    database: "app"
+    credentials:
+      username_env: "MYSQL_UPSTREAM_USER"
+      password_env: "MYSQL_UPSTREAM_PASSWORD"
+
+policies:
+  default:
+    block:
+      - "drop_database"
+      - "drop_table"
+      - "truncate"
+      - "alter_system"
+      - "set_global"
+      - "load_data"
+    require_where:
+      - "update"
+      - "delete"
+    max_rows_changed: 1000

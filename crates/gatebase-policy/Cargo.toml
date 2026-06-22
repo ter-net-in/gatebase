@@ -1,0 +1,13 @@
+[package]
+name = "gatebase-policy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+gatebase-config = { path = "../gatebase-config" }
+gatebase-core = { path = "../gatebase-core" }
+serde.workspace = true

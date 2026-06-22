@@ -1,0 +1,21 @@
+[package]
+name = "gatebase-broker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+chrono.workspace = true
+gatebase-config = { path = "../gatebase-config" }
+gatebase-core = { path = "../gatebase-core" }
+gatebase-github = { path = "../gatebase-github" }
+gatebase-session = { path = "../gatebase-session" }
+serde.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+uuid.workspace = true

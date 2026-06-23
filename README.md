@@ -152,22 +152,204 @@ your database client.
 
 ## CLI reference
 
-A single `gatebase` binary provides every subcommand.
+A single `gatebase` binary provides every runtime and operator command. When
+running from source, prefix examples with `cargo run -p gatebase-cli --`.
 
-| Command | Description |
-| --- | --- |
-| `gatebase broker --config <path>` | Run the broker HTTP service. |
-| `gatebase proxy postgres --config <path>` | Run the Postgres proxy. |
-| `gatebase proxy mysql --config <path>` | Run the MySQL proxy. |
-| `gatebase config check --config <path>` | Validate a config file and exit. |
-| `gatebase session create --broker <url> --actor <a> --repo <r> --target <t> [--pull-request <n>]` | Request a session from the broker. |
-| `gatebase session list --config <path>` | List sessions from the SQLite store (id, actor, repo, PR, target, active). |
-| `gatebase session revoke --config <path> <id>` | Revoke a session in the SQLite store. |
-| `gatebase access approve --broker <url> --repo <r> --target <t> --approver <a> [--actor <a>] [--pull-request <n>] [--reason <r>] [--ttl-minutes <n>]` | Create a broker-owned CLI approval. |
+```text
+gatebase <command>
+```
 
-> `session create` and `access approve` talk to the broker over HTTP.
-> `session list` and `session revoke` read and write the SQLite metadata store
-> directly, so they take `--config`, not `--broker`.
+Most commands take either `--config <path>` or `--broker <url>`:
+
+| Input | Used by | Meaning |
+| --- | --- | --- |
+| `--config <path>` | Runtime and local metadata commands | Load Gatebase YAML, target settings, session signing key path, and SQLite metadata path. |
+| `--broker <url>` | Broker API commands | Send HTTP requests to a running broker. Defaults to `http://127.0.0.1:8080` where supported. |
+
+Set `RUST_LOG` to control CLI and service logging, for example
+`RUST_LOG=info gatebase broker --config examples/gatebase.yaml`.
+
+### `gatebase broker`
+
+Runs the broker HTTP service. The broker validates access signals, creates
+sessions, stores approvals, receives GitHub webhooks, and exposes health checks.
+
+```bash
+gatebase broker --config examples/gatebase.yaml
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `--config <path>` | Yes | Path to Gatebase YAML config. |
+
+The broker listens on `server.broker_listen` from the config and uses
+`server.public_url` when generating connection strings.
+
+### `gatebase proxy postgres`
+
+Runs the Postgres wire-protocol proxy for targets with `engine: postgres`.
+Clients connect to the proxy listen address from the selected target and use the
+broker-issued session token as their password.
+
+```bash
+gatebase proxy postgres --config examples/gatebase.yaml
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `--config <path>` | Yes | Path to Gatebase YAML config. |
+
+The proxy validates sessions against SQLite, checks SQL policy before forwarding
+queries, writes audit events, and closes connections when sessions expire or are
+revoked.
+
+### `gatebase proxy mysql`
+
+Runs the MySQL wire-protocol proxy for targets with `engine: mysql`. Clients must
+support clear-password auth toward Gatebase so the session token can be sent to
+the proxy.
+
+```bash
+gatebase proxy mysql --config examples/gatebase.yaml
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `--config <path>` | Yes | Path to Gatebase YAML config. |
+
+Like the Postgres proxy, this command validates sessions, applies SQL policy,
+writes audit events, and forwards allowed text queries to the upstream database.
+
+### `gatebase config check`
+
+Loads and validates a config file, then exits. Use this in CI or before
+restarting services.
+
+```bash
+gatebase config check --config examples/gatebase.yaml
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `--config <path>` | Yes | Path to Gatebase YAML config. |
+
+Successful output:
+
+```text
+config ok
+```
+
+### `gatebase session create`
+
+Requests a short-lived database session from the broker. The broker checks the
+configured access signals for the requested repo, pull request, actor, and
+target. On success it returns a connection string for a normal database client.
+
+```bash
+gatebase session create \
+  --broker http://127.0.0.1:8080 \
+  --actor alice \
+  --repo gatebase/gatebase \
+  --pull-request 123 \
+  --target prod-pg
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `--broker <url>` | No | Broker base URL. Defaults to `http://127.0.0.1:8080`. |
+| `--actor <name>` | Yes | Person or service requesting access. Must match required approval context. |
+| `--repo <owner/name>` | Yes | GitHub repository used for access checks and audit context. |
+| `--pull-request <number>` | No | Pull request number. Required when configured GitHub signals need PR context. |
+| `--target <name>` | Yes | Configured database target to access, for example `prod-pg`. |
+
+Successful output:
+
+```text
+session_id <id>
+expires_at <rfc3339 timestamp>
+connection_string <database connection string>
+```
+
+Use `connection_string` with `psql`, `mysql`, or application drivers that speak
+the target protocol.
+
+### `gatebase session list`
+
+Lists sessions directly from the SQLite metadata store configured in
+`metadata.sqlite_path`. This does not call the broker API.
+
+```bash
+gatebase session list --config examples/gatebase.yaml
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `--config <path>` | Yes | Path to Gatebase YAML config. |
+
+Output columns are tab-separated:
+
+```text
+<session_id> <actor> <repo> <pull_request_or_-> <target> <active|inactive>
+```
+
+### `gatebase session revoke`
+
+Revokes a session directly in the SQLite metadata store. Proxies poll the store
+and close matching active connections after revocation is observed.
+
+```bash
+gatebase session revoke --config examples/gatebase.yaml <session-id>
+```
+
+| Argument or flag | Required | Description |
+| --- | --- | --- |
+| `--config <path>` | Yes | Path to Gatebase YAML config. |
+| `<session-id>` | Yes | Session ID printed by `session create` or `session list`. |
+
+Successful output:
+
+```text
+revoked <session-id>
+```
+
+### `gatebase access approve`
+
+Creates a broker-owned CLI approval. Use this when the config contains a
+`cli_approval` required signal. The broker stores the approval and later matches
+it when `session create` requests the same repo, target, optional actor, and
+optional pull request.
+
+```bash
+gatebase access approve \
+  --broker http://127.0.0.1:8080 \
+  --repo gatebase/gatebase \
+  --pull-request 123 \
+  --target prod-pg \
+  --actor alice \
+  --approver security-oncall \
+  --reason "incident investigation" \
+  --ttl-minutes 30
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `--broker <url>` | No | Broker base URL. Defaults to `http://127.0.0.1:8080`. |
+| `--repo <owner/name>` | Yes | GitHub repository covered by the approval. |
+| `--pull-request <number>` | No | Pull request covered by the approval. Omit only when `allow_without_pull_request: true` is configured. |
+| `--target <name>` | Yes | Configured database target covered by the approval. |
+| `--actor <name>` | No | Restrict approval to one actor. Omit to approve any actor that satisfies other rules. |
+| `--approver <name>` | Yes | Operator granting approval. Must be allowed by the matching `cli_approval.approvers` config. |
+| `--reason <text>` | No | Human-readable reason stored with the approval. |
+| `--ttl-minutes <minutes>` | No | Approval lifetime. Broker applies configured default/maximum behavior when omitted or constrained. |
+
+Successful output:
+
+```text
+approved <approval-id>
+expires_at <rfc3339 timestamp>
+```
+
+The `expires_at` line appears when the broker returns an expiration timestamp.
 
 ## Broker HTTP API
 

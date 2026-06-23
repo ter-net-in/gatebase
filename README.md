@@ -272,7 +272,7 @@ GHCR. See [`.github/workflows/release.yml`](.github/workflows/release.yml).
 
 ## Development
 
-Gatebase is a Rust workspace (minimum Rust 1.78). Before opening a pull request:
+Gatebase is a Rust workspace (minimum Rust 1.88). Before opening a pull request:
 
 ```bash
 cargo fmt --all -- --check

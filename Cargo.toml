@@ -21,7 +21,7 @@ edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/gatebase/gatebase"
 homepage = "https://github.com/gatebase/gatebase"
-rust-version = "1.78"
+rust-version = "1.88"
 
 [workspace.dependencies]
 anyhow = "1.0"
@@ -32,7 +32,7 @@ clap = { version = "4.5", features = ["derive", "env"] }
 hex = "0.4"
 hmac = "0.12"
 jsonwebtoken = "9.3"
-mysql_async = "0.34"
+mysql_async = { version = "0.34", default-features = false, features = ["default-rustls"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 secrecy = { version = "0.8", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }

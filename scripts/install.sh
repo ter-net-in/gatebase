@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-repo="gatebase/gatebase"
+repo="ter-net-in/gatebase"
 bin="gatebase"
 install_dir="${INSTALL_DIR:-/usr/local/bin}"
 

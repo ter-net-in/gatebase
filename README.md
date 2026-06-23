@@ -87,9 +87,9 @@ See [`docs/architecture.md`](docs/architecture.md) for more detail.
 
 ## Installation
 
-Install system-wide: `curl -fsSL https://raw.githubusercontent.com/gatebase/gatebase/main/scripts/install.sh | sh`
+Install system-wide: `curl -fsSL https://raw.githubusercontent.com/ter-net-in/gatebase/main/scripts/install.sh | sh`
 
-Uninstall: `curl -fsSL https://raw.githubusercontent.com/gatebase/gatebase/main/scripts/install.sh | sh -s -- --uninstall`
+Uninstall: `curl -fsSL https://raw.githubusercontent.com/ter-net-in/gatebase/main/scripts/install.sh | sh -s -- --uninstall`
 
 ## Quick start (local demo)
 

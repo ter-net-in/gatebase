@@ -3,7 +3,7 @@ use crate::protocol::{
     is_clean_disconnect, parse_startup, read_message, read_startup, request_password,
     write_auth_ok, write_backend_key_data, write_error, write_parameter_status, write_ready,
 };
-use crate::query::handle_query;
+use crate::query::{describe_query, handle_extended_query, handle_query};
 use crate::upstream::upstream_config;
 use anyhow::{Context, Result};
 use chrono::Utc;
@@ -11,6 +11,7 @@ use gatebase_audit::AuditSink;
 use gatebase_config::{PolicyConfig, TargetConfig};
 use gatebase_core::{ActiveConnection, Session};
 use gatebase_session::{SessionIssuer, SessionStore};
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::time::{interval, sleep, Duration};
@@ -119,6 +120,7 @@ async fn proxy_loop(loop_state: ProxyLoop) -> Result<()> {
         session: &session,
         fail_closed,
     };
+    let mut extended = ExtendedQueryState::default();
 
     loop {
         let message = tokio::select! {
@@ -146,18 +148,127 @@ async fn proxy_loop(loop_state: ProxyLoop) -> Result<()> {
                 }
                 write_ready(&mut writer).await?;
             }
+            b'P' => {
+                let (name, statement) = crate::protocol::parse_statement_message(&message.body)
+                    .context("invalid Parse message")?;
+                extended
+                    .statements
+                    .insert(name.to_owned(), statement.to_owned());
+                crate::protocol::write_parse_complete(&mut writer).await?;
+            }
+            b'B' => {
+                let (portal, statement, parameter_count) =
+                    crate::protocol::parse_bind_message(&message.body)
+                        .context("invalid Bind message")?;
+                if parameter_count != 0 {
+                    write_error(
+                        &mut writer,
+                        "0A000",
+                        "Gatebase does not support Postgres extended protocol parameters yet",
+                    )
+                    .await?;
+                    continue;
+                }
+                let Some(statement_sql) = extended.statements.get(statement).cloned() else {
+                    write_error(&mut writer, "26000", "unknown prepared statement").await?;
+                    continue;
+                };
+                extended.portals.insert(portal.to_owned(), statement_sql);
+                extended.described_portals.remove(portal);
+                if extended.described_statements.contains(statement) {
+                    extended.described_portals.insert(portal.to_owned());
+                }
+                crate::protocol::write_bind_complete(&mut writer).await?;
+            }
+            b'D' => {
+                let (describe_type, name) = crate::protocol::parse_describe_message(&message.body)
+                    .context("invalid Describe message")?;
+                match describe_type {
+                    b'P' => {
+                        let Some(statement) = extended.portals.get(name) else {
+                            write_error(&mut writer, "34000", "unknown portal").await?;
+                            continue;
+                        };
+                        if describe_query(statement, &upstream, &mut writer, &query_context).await?
+                        {
+                            extended.described_portals.insert(name.to_owned());
+                        }
+                    }
+                    b'S' => {
+                        let Some(statement) = extended.statements.get(name) else {
+                            write_error(&mut writer, "26000", "unknown prepared statement").await?;
+                            continue;
+                        };
+                        crate::protocol::write_empty_parameter_description(&mut writer).await?;
+                        if describe_query(statement, &upstream, &mut writer, &query_context).await?
+                        {
+                            extended.described_statements.insert(name.to_owned());
+                        }
+                    }
+                    _ => {
+                        write_error(&mut writer, "0A000", "unsupported Describe target").await?;
+                        continue;
+                    }
+                }
+            }
+            b'E' => {
+                let portal = crate::protocol::parse_execute_message(&message.body)
+                    .context("invalid Execute message")?;
+                let Some(statement) = extended.portals.get(portal).cloned() else {
+                    write_error(&mut writer, "34000", "unknown portal").await?;
+                    continue;
+                };
+                let emit_row_description = !extended.described_portals.remove(portal);
+                tokio::select! {
+                    result = handle_extended_query(&statement, &upstream, &mut writer, &query_context, emit_row_description) => result?,
+                    reason = wait_for_session_end(&store, &session) => {
+                        write_error(&mut writer, "57P01", session_disconnect_message(reason?)).await?;
+                        return Ok(());
+                    }
+                }
+            }
+            b'C' => {
+                let (close_type, name) = crate::protocol::parse_close_message(&message.body)
+                    .context("invalid Close message")?;
+                match close_type {
+                    b'S' => {
+                        extended.statements.remove(name);
+                        extended.described_statements.remove(name);
+                    }
+                    b'P' => {
+                        extended.portals.remove(name);
+                        extended.described_portals.remove(name);
+                    }
+                    _ => {
+                        write_error(&mut writer, "0A000", "unsupported Close target").await?;
+                        continue;
+                    }
+                }
+                crate::protocol::write_close_complete(&mut writer).await?;
+            }
+            b'H' => {}
+            b'S' => {
+                write_ready(&mut writer).await?;
+            }
             b'X' => return Ok(()),
             _ => {
                 write_error(
                     &mut writer,
                     "0A000",
-                    "Gatebase currently supports only Postgres simple Query messages",
+                    "Gatebase does not support this Postgres frontend message yet",
                 )
                 .await?;
-                write_ready(&mut writer).await?;
             }
         }
     }
+}
+
+#[derive(Default)]
+struct ExtendedQueryState {
+    statements: HashMap<String, String>,
+    portals: HashMap<String, String>,
+    described_statements: HashSet<String>,
+    described_portals: HashSet<String>,
 }
 
 #[derive(Debug, Clone, Copy)]

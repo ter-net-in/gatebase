@@ -177,6 +177,19 @@ async fn exercise_postgres_proxy(broker_port: u16, proxy_port: u16) -> anyhow::R
         tokio_postgres::SimpleQueryMessage::Row(row) if row.get(0) == Some("1")
     )));
 
+    let row = client
+        .query_one("SELECT 'extended-ok'", &[])
+        .await
+        .context("run extended Postgres SELECT through Gatebase")?;
+    let value: String = row.get(0);
+    assert_eq!(value, "extended-ok");
+
+    let extended_blocked = client.execute("DROP TABLE definitely_blocked", &[]).await;
+    assert!(
+        extended_blocked.is_err(),
+        "blocked extended Postgres SQL must return an error"
+    );
+
     let blocked = client.simple_query("DROP TABLE definitely_blocked").await;
     assert!(
         blocked.is_err(),

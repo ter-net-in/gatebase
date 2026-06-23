@@ -93,6 +93,63 @@ pub(crate) fn cstring(body: &[u8]) -> Result<&str> {
     Ok(std::str::from_utf8(&body[..end])?)
 }
 
+pub(crate) fn cstring_with_remainder(body: &[u8]) -> Result<(&str, &[u8])> {
+    let end = body
+        .iter()
+        .position(|byte| *byte == 0)
+        .ok_or_else(|| anyhow!("missing null terminator"))?;
+    Ok((std::str::from_utf8(&body[..end])?, &body[end + 1..]))
+}
+
+pub(crate) fn parse_statement_message(body: &[u8]) -> Result<(&str, &str)> {
+    let (name, remainder) = cstring_with_remainder(body)?;
+    let (statement, _) = cstring_with_remainder(remainder)?;
+    Ok((name, statement))
+}
+
+pub(crate) fn parse_bind_message(body: &[u8]) -> Result<(&str, &str, i16)> {
+    let (portal, remainder) = cstring_with_remainder(body)?;
+    let (statement, remainder) = cstring_with_remainder(remainder)?;
+    anyhow::ensure!(remainder.len() >= 2, "invalid Bind message");
+    let format_count = i16::from_be_bytes(remainder[0..2].try_into()?);
+    anyhow::ensure!(format_count >= 0, "invalid Bind message");
+    let mut offset = 2 + (format_count as usize * 2);
+    anyhow::ensure!(remainder.len() >= offset + 2, "invalid Bind message");
+    let parameter_count = i16::from_be_bytes(remainder[offset..offset + 2].try_into()?);
+    anyhow::ensure!(parameter_count >= 0, "invalid Bind message");
+    offset += 2;
+    for _ in 0..parameter_count {
+        anyhow::ensure!(remainder.len() >= offset + 4, "invalid Bind message");
+        let len = i32::from_be_bytes(remainder[offset..offset + 4].try_into()?);
+        offset += 4;
+        if len >= 0 {
+            offset += len as usize;
+            anyhow::ensure!(remainder.len() >= offset, "invalid Bind message");
+        }
+    }
+    Ok((portal, statement, parameter_count))
+}
+
+pub(crate) fn parse_execute_message(body: &[u8]) -> Result<&str> {
+    let (portal, remainder) = cstring_with_remainder(body)?;
+    anyhow::ensure!(remainder.len() >= 4, "invalid Execute message");
+    Ok(portal)
+}
+
+pub(crate) fn parse_describe_message(body: &[u8]) -> Result<(u8, &str)> {
+    anyhow::ensure!(body.len() >= 2, "invalid Describe message");
+    let describe_type = body[0];
+    let (name, _) = cstring_with_remainder(&body[1..])?;
+    Ok((describe_type, name))
+}
+
+pub(crate) fn parse_close_message(body: &[u8]) -> Result<(u8, &str)> {
+    anyhow::ensure!(body.len() >= 2, "invalid Close message");
+    let close_type = body[0];
+    let (name, _) = cstring_with_remainder(&body[1..])?;
+    Ok((close_type, name))
+}
+
 pub(crate) async fn write_auth_ok(writer: &mut OwnedWriteHalf) -> Result<()> {
     write_message(writer, b'R', &0_i32.to_be_bytes()).await
 }
@@ -119,6 +176,26 @@ pub(crate) async fn write_backend_key_data(writer: &mut OwnedWriteHalf) -> Resul
 
 pub(crate) async fn write_ready(writer: &mut OwnedWriteHalf) -> Result<()> {
     write_message(writer, b'Z', b"I").await
+}
+
+pub(crate) async fn write_parse_complete(writer: &mut OwnedWriteHalf) -> Result<()> {
+    write_message(writer, b'1', &[]).await
+}
+
+pub(crate) async fn write_bind_complete(writer: &mut OwnedWriteHalf) -> Result<()> {
+    write_message(writer, b'2', &[]).await
+}
+
+pub(crate) async fn write_close_complete(writer: &mut OwnedWriteHalf) -> Result<()> {
+    write_message(writer, b'3', &[]).await
+}
+
+pub(crate) async fn write_no_data(writer: &mut OwnedWriteHalf) -> Result<()> {
+    write_message(writer, b'n', &[]).await
+}
+
+pub(crate) async fn write_empty_parameter_description(writer: &mut OwnedWriteHalf) -> Result<()> {
+    write_message(writer, b't', &0_i16.to_be_bytes()).await
 }
 
 pub(crate) async fn write_empty_query(writer: &mut OwnedWriteHalf) -> Result<()> {

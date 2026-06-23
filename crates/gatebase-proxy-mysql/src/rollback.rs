@@ -166,7 +166,7 @@ async fn write_artifact(artifact: &RollbackArtifact, context: &RollbackContext<'
 
 async fn fetch_single_primary_key(upstream: &mut mysql_async::Conn, table: &str) -> Result<String> {
     let (schema, table_name) = split_table_name(table);
-    let schema_expr = schema.map_or_else(|| "DATABASE()".to_owned(), |schema| sql_string(schema));
+    let schema_expr = schema.map_or_else(|| "DATABASE()".to_owned(), sql_string);
     let query = format!(
         "SELECT kcu.COLUMN_NAME \
          FROM information_schema.TABLE_CONSTRAINTS tc \
@@ -337,8 +337,8 @@ fn parse_where_in(where_clause: &str) -> Option<(String, Vec<String>)> {
 
 fn take_ident(input: &str) -> Option<(String, &str)> {
     let input = input.trim_start();
-    if input.starts_with('`') {
-        let end = input[1..].find('`')? + 1;
+    if let Some(rest) = input.strip_prefix('`') {
+        let end = rest.find('`')? + 1;
         return Some((input[1..end].to_owned(), &input[end + 1..]));
     }
     let end = input

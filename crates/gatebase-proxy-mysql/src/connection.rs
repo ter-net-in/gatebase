@@ -19,17 +19,31 @@ use uuid::Uuid;
 
 const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 
+pub(crate) struct ConnectionParams {
+    pub target: TargetConfig,
+    pub policy: PolicyConfig,
+    pub sinks: Vec<Arc<dyn AuditSink>>,
+    pub rollback: RollbackConfig,
+    pub rollback_sinks: Vec<Arc<dyn RollbackSink>>,
+    pub store: SessionStore,
+    pub issuer: SessionIssuer,
+    pub fail_closed: bool,
+}
+
 pub(crate) async fn handle_connection(
     mut stream: TcpStream,
-    target: TargetConfig,
-    policy: PolicyConfig,
-    sinks: Vec<Arc<dyn AuditSink>>,
-    rollback: RollbackConfig,
-    rollback_sinks: Vec<Arc<dyn RollbackSink>>,
-    store: SessionStore,
-    issuer: SessionIssuer,
-    fail_closed: bool,
+    params: ConnectionParams,
 ) -> Result<()> {
+    let ConnectionParams {
+        target,
+        policy,
+        sinks,
+        rollback,
+        rollback_sinks,
+        store,
+        issuer,
+        fail_closed,
+    } = params;
     let peer = stream.peer_addr()?;
     let login = handshake(&mut stream).await?;
     let verified = match issuer

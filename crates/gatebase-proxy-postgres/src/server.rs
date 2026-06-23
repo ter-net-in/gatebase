@@ -1,5 +1,5 @@
 use crate::audit::build_sinks;
-use crate::connection::handle_connection;
+use crate::connection::{handle_connection, ConnectionParams};
 use crate::rollback::build_rollback_sinks;
 use anyhow::{Context, Result};
 use gatebase_config::Config;
@@ -42,14 +42,16 @@ pub async fn run(config: Config) -> Result<()> {
                         tokio::spawn(async move {
                             if let Err(error) = handle_connection(
                                 stream,
-                                target,
-                                policy,
-                                sinks,
-                                rollback,
-                                rollback_sinks,
-                                store,
-                                issuer,
-                                fail_closed,
+                                ConnectionParams {
+                                    target,
+                                    policy,
+                                    sinks,
+                                    rollback,
+                                    rollback_sinks,
+                                    store,
+                                    issuer,
+                                    fail_closed,
+                                },
                             )
                             .await
                             {

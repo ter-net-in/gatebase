@@ -312,8 +312,8 @@ fn parse_where_in(where_clause: &str) -> Option<(String, Vec<String>)> {
 
 fn take_ident(input: &str) -> Option<(String, &str)> {
     let input = input.trim_start();
-    if input.starts_with('"') {
-        let end = input[1..].find('"')? + 1;
+    if let Some(rest) = input.strip_prefix('"') {
+        let end = rest.find('"')? + 1;
         return Some((input[1..end].to_owned(), &input[end + 1..]));
     }
     let end = input

@@ -56,7 +56,10 @@ impl Config {
             .iter()
             .any(|target| !target.access.required_signals.is_empty())
         {
-            anyhow::ensure!(self.github.is_some(), "GitHub issue access requires github config");
+            anyhow::ensure!(
+                self.github.is_some(),
+                "GitHub issue access requires github config"
+            );
         }
         Ok(())
     }

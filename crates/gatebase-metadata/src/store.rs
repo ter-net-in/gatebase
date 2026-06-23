@@ -4,7 +4,9 @@ use crate::mapping::{
 };
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
-use gatebase_core::{AccessToken, ActiveConnection, AuditEvent, RollbackArtifact, Session, SessionId};
+use gatebase_core::{
+    AccessToken, ActiveConnection, AuditEvent, RollbackArtifact, Session, SessionId,
+};
 use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ColumnTrait, ConnectionTrait, Database, DatabaseConnection,
     EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Schema, Set, Statement,
@@ -130,7 +132,11 @@ impl MetadataStore {
             .transpose()
     }
 
-    pub async fn consume_access_token(&self, token_hash: &str, now: String) -> Result<Option<AccessToken>> {
+    pub async fn consume_access_token(
+        &self,
+        token_hash: &str,
+        now: String,
+    ) -> Result<Option<AccessToken>> {
         let Some(model) = entities::access_token::Entity::find()
             .filter(entities::access_token::Column::TokenHash.eq(token_hash))
             .filter(entities::access_token::Column::UsedAt.is_null())
@@ -409,11 +415,7 @@ async fn prune_sessions(db: &DatabaseConnection, before: &str, dry_run: bool) ->
         .rows_affected)
 }
 
-async fn prune_access_tokens(
-    db: &DatabaseConnection,
-    before: &str,
-    dry_run: bool,
-) -> Result<u64> {
+async fn prune_access_tokens(db: &DatabaseConnection, before: &str, dry_run: bool) -> Result<u64> {
     let filter = entities::access_token::Column::ExpiresAt.lt(before);
     if dry_run {
         return Ok(entities::access_token::Entity::find()

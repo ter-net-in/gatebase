@@ -115,7 +115,9 @@ pub(crate) async fn github_webhook(
     let Some(issue) = payload.issue else {
         return Ok(StatusCode::ACCEPTED);
     };
-    if let Err(error) = mint_issue_access_token(&state, &payload.repository.full_name, issue.number).await {
+    if let Err(error) =
+        mint_issue_access_token(&state, &payload.repository.full_name, issue.number).await
+    {
         tracing::warn!(%error, "failed to mint issue access token");
     }
     Ok(StatusCode::ACCEPTED)
@@ -202,7 +204,11 @@ async fn mint_issue_access_token(state: &AppState, repo: &str, issue: i64) -> Re
         .issue(repo, issue)
         .await
         .map_err(|error| error.to_string())?;
-    let raw_token = format!("gb_at_{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+    let raw_token = format!(
+        "gb_at_{}{}",
+        Uuid::new_v4().simple(),
+        Uuid::new_v4().simple()
+    );
     let expires_at = now + Duration::minutes(parse_minutes(&target.access.access_token_ttl)?);
     let token = AccessToken {
         id: format!("at_{}", Uuid::new_v4().simple()),

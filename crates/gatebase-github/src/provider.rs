@@ -13,7 +13,11 @@ use std::{fs, path::Path};
 #[async_trait]
 pub trait GitProvider: Send + Sync {
     async fn issue(&self, repo: &str, issue: i64) -> Result<Issue>;
-    async fn evaluate_signal(&self, request: &AccessRequest, signal: &AccessSignal) -> Result<SignalEvaluation>;
+    async fn evaluate_signal(
+        &self,
+        request: &AccessRequest,
+        signal: &AccessSignal,
+    ) -> Result<SignalEvaluation>;
     async fn comment_issue(&self, repo: &str, issue: i64, body: &str) -> Result<()>;
     async fn close_issue(&self, repo: &str, issue: i64) -> Result<()>;
 }
@@ -37,9 +41,18 @@ impl GitHubAppConfig {
     ) -> Result<Self> {
         let private_key_file = private_key_file.as_ref();
         let private_key_pem = fs::read(private_key_file).with_context(|| {
-            format!("failed to read GitHub App private key {}", private_key_file.display())
+            format!(
+                "failed to read GitHub App private key {}",
+                private_key_file.display()
+            )
         })?;
-        Ok(Self { app_id, installation_id, private_key_pem, webhook_secret, api_base_url })
+        Ok(Self {
+            app_id,
+            installation_id,
+            private_key_pem,
+            webhook_secret,
+            api_base_url,
+        })
     }
 }
 
@@ -52,19 +65,28 @@ pub struct GitHubProvider {
 impl GitHubProvider {
     #[must_use]
     pub fn disabled() -> Self {
-        Self { client: Client::new(), config: None }
+        Self {
+            client: Client::new(),
+            config: None,
+        }
     }
 
     #[must_use]
     pub fn new(config: GitHubAppConfig) -> Self {
-        Self { client: Client::new(), config: Some(config) }
+        Self {
+            client: Client::new(),
+            config: Some(config),
+        }
     }
 
     async fn get<T>(&self, path: &str) -> Result<T>
     where
         T: for<'de> Deserialize<'de>,
     {
-        let config = self.config.as_ref().context("GitHub App is not configured")?;
+        let config = self
+            .config
+            .as_ref()
+            .context("GitHub App is not configured")?;
         let token = self.installation_token().await?;
         let url = format!("{}{}", config.api_base_url.trim_end_matches('/'), path);
         Ok(self
@@ -85,7 +107,10 @@ impl GitHubProvider {
     where
         T: Serialize + Sync,
     {
-        let config = self.config.as_ref().context("GitHub App is not configured")?;
+        let config = self
+            .config
+            .as_ref()
+            .context("GitHub App is not configured")?;
         let token = self.installation_token().await?;
         let url = format!("{}{}", config.api_base_url.trim_end_matches('/'), path);
         self.client
@@ -102,7 +127,10 @@ impl GitHubProvider {
     }
 
     async fn installation_token(&self) -> Result<String> {
-        let config = self.config.as_ref().context("GitHub App is not configured")?;
+        let config = self
+            .config
+            .as_ref()
+            .context("GitHub App is not configured")?;
         let jwt = github_app_jwt(config)?;
         let url = format!(
             "{}/app/installations/{}/access_tokens",
@@ -131,23 +159,40 @@ impl GitProvider for GitHubProvider {
         self.get(&format!("/repos/{repo}/issues/{issue}")).await
     }
 
-    async fn evaluate_signal(&self, request: &AccessRequest, signal: &AccessSignal) -> Result<SignalEvaluation> {
+    async fn evaluate_signal(
+        &self,
+        request: &AccessRequest,
+        signal: &AccessSignal,
+    ) -> Result<SignalEvaluation> {
         let issue = self.issue(&request.github_repo, request.issue).await?;
         match signal {
             AccessSignal::GitHubIssueOpen => {
-                if issue.state == "open" { Ok(SignalEvaluation::allowed()) } else { Ok(SignalEvaluation::denied("issue is not open")) }
+                if issue.state == "open" {
+                    Ok(SignalEvaluation::allowed())
+                } else {
+                    Ok(SignalEvaluation::denied("issue is not open"))
+                }
             }
             AccessSignal::GitHubIssueLabels { labels } => {
                 let missing: Vec<&String> = labels
                     .iter()
-                    .filter(|required| !issue.labels.iter().any(|label| label.name == required.as_str()))
+                    .filter(|required| {
+                        !issue
+                            .labels
+                            .iter()
+                            .any(|label| label.name == required.as_str())
+                    })
                     .collect();
                 if missing.is_empty() {
                     Ok(SignalEvaluation::allowed())
                 } else {
                     Ok(SignalEvaluation::denied(format!(
                         "required issue labels missing: {}",
-                        missing.into_iter().map(String::as_str).collect::<Vec<_>>().join(", ")
+                        missing
+                            .into_iter()
+                            .map(String::as_str)
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     )))
                 }
             }
@@ -182,7 +227,11 @@ struct JwtClaims<'a> {
 
 fn github_app_jwt(config: &GitHubAppConfig) -> Result<String> {
     let now = Utc::now();
-    let claims = JwtClaims { iss: &config.app_id, iat: (now - Duration::seconds(60)).timestamp(), exp: (now + Duration::minutes(9)).timestamp() };
+    let claims = JwtClaims {
+        iss: &config.app_id,
+        iat: (now - Duration::seconds(60)).timestamp(),
+        exp: (now + Duration::minutes(9)).timestamp(),
+    };
     let key = EncodingKey::from_rsa_pem(&config.private_key_pem)?;
     let mut header = Header::new(Algorithm::RS256);
     header.typ = Some("JWT".to_owned());
@@ -190,9 +239,15 @@ fn github_app_jwt(config: &GitHubAppConfig) -> Result<String> {
 }
 
 pub fn verify_webhook_signature(secret: &str, body: &[u8], header: &str) -> bool {
-    let Some(signature) = header.strip_prefix("sha256=") else { return false; };
-    let Ok(expected) = hex::decode(signature) else { return false; };
-    let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(secret.as_bytes()) else { return false; };
+    let Some(signature) = header.strip_prefix("sha256=") else {
+        return false;
+    };
+    let Ok(expected) = hex::decode(signature) else {
+        return false;
+    };
+    let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(secret.as_bytes()) else {
+        return false;
+    };
     mac.update(body);
     mac.verify_slice(&expected).is_ok()
 }
@@ -247,6 +302,10 @@ mod tests {
 
     #[test]
     fn rejects_invalid_webhook_signature() {
-        assert!(!verify_webhook_signature("secret", b"payload", "sha256=deadbeef"));
+        assert!(!verify_webhook_signature(
+            "secret",
+            b"payload",
+            "sha256=deadbeef"
+        ));
     }
 }

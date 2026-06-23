@@ -212,8 +212,7 @@ async fn exercise_postgres_proxy(
     broker_port: u16,
     proxy_port: u16,
 ) -> anyhow::Result<()> {
-    let session = create_session(bin, config_path, "prod-pg")
-        .context("create Postgres session")?;
+    let session = create_session(bin, config_path, "prod-pg").context("create Postgres session")?;
     let config = format!(
         "host=127.0.0.1 port={proxy_port} user=alice password={} dbname=app sslmode=disable",
         session.token
@@ -305,8 +304,7 @@ async fn exercise_mysql_proxy(
         .context("insert MySQL rollback E2E row")?;
     upstream.disconnect().await?;
 
-    let session = create_session(bin, config_path, "prod-mysql")
-        .context("create MySQL session")?;
+    let session = create_session(bin, config_path, "prod-mysql").context("create MySQL session")?;
     let opts = mysql_async::OptsBuilder::default()
         .ip_or_hostname("127.0.0.1")
         .tcp_port(proxy_port)

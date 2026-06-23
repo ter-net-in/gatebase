@@ -1,7 +1,9 @@
 use crate::entities;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use gatebase_core::{AccessToken, ActiveConnection, AuditEvent, AuditEventId, Decision, Session, SessionId};
+use gatebase_core::{
+    AccessToken, ActiveConnection, AuditEvent, AuditEventId, Decision, Session, SessionId,
+};
 use std::str::FromStr;
 
 pub(crate) fn model_to_access_token(model: entities::access_token::Model) -> Result<AccessToken> {

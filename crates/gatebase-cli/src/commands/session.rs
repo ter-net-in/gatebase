@@ -3,8 +3,8 @@ use anyhow::{Context, Result};
 use gatebase_config::Config;
 use gatebase_core::SessionId;
 use gatebase_session::{new_session, SessionIssuer, SessionStore};
-use std::fs;
 use serde::{Deserialize, Serialize};
+use std::fs;
 
 #[derive(Debug, Serialize)]
 struct CreateSessionRequest {
@@ -20,10 +20,7 @@ struct CreateSessionResponse {
 
 pub(crate) async fn run(command: SessionCommand) -> Result<()> {
     match command {
-        SessionCommand::Create {
-            broker,
-            token,
-        } => create(broker, token).await,
+        SessionCommand::Create { broker, token } => create(broker, token).await,
         SessionCommand::CreateLocal {
             config,
             target,
@@ -34,7 +31,11 @@ pub(crate) async fn run(command: SessionCommand) -> Result<()> {
     }
 }
 
-async fn create_local(config: std::path::PathBuf, target_name: String, actor: String) -> Result<()> {
+async fn create_local(
+    config: std::path::PathBuf,
+    target_name: String,
+    actor: String,
+) -> Result<()> {
     let config = Config::load(config)?;
     let target = config
         .targets
@@ -49,14 +50,7 @@ async fn create_local(config: std::path::PathBuf, target_name: String, actor: St
     let store = SessionStore::open(&config.metadata.sqlite_path).await?;
     let signing_secret = fs::read(&config.sessions.signing_key_file)?;
     let issuer = SessionIssuer::new(&signing_secret);
-    let session = new_session(
-        actor,
-        "cli".to_owned(),
-        None,
-        None,
-        target.name.clone(),
-        15,
-    );
+    let session = new_session(actor, "cli".to_owned(), None, None, target.name.clone(), 15);
     store.create(&session).await?;
     let token = issuer.issue(&session)?;
     let host = target
@@ -91,12 +85,8 @@ fn public_url_host(public_url: &str) -> Option<String> {
 }
 
 async fn create(broker: String, token: String) -> Result<()> {
-    let response: CreateSessionResponse = post_json(
-        &broker,
-        "/api/sessions",
-        &CreateSessionRequest { token },
-    )
-    .await?;
+    let response: CreateSessionResponse =
+        post_json(&broker, "/api/sessions", &CreateSessionRequest { token }).await?;
     println!("session_id {}", response.session_id);
     println!("expires_at {}", response.expires_at);
     println!("connection_string {}", response.connection_string);

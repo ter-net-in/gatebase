@@ -30,8 +30,9 @@ impl SessionIssuer {
         let claims = Claims {
             sub: session.actor.clone(),
             session_id: session.id.to_string(),
+            source_type: session.source_type.clone(),
             github_repo: session.github_repo.clone(),
-            pull_request: session.pull_request,
+            issue: session.issue,
             target: session.target.clone(),
             scopes: session.scopes.clone(),
             exp: session.expires_at.timestamp() as usize,

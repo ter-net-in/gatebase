@@ -4,11 +4,12 @@ use crate::protocol::{
     write_auth_ok, write_backend_key_data, write_error, write_parameter_status, write_ready,
 };
 use crate::query::{describe_query, handle_extended_query, handle_query};
+use crate::rollback::RollbackContext;
 use crate::upstream::upstream_config;
 use anyhow::{Context, Result};
 use chrono::Utc;
-use gatebase_audit::AuditSink;
-use gatebase_config::{PolicyConfig, TargetConfig};
+use gatebase_audit::{AuditSink, RollbackSink};
+use gatebase_config::{PolicyConfig, RollbackConfig, TargetConfig};
 use gatebase_core::{ActiveConnection, Session};
 use gatebase_session::{SessionIssuer, SessionStore};
 use std::collections::{HashMap, HashSet};
@@ -22,6 +23,8 @@ pub(crate) async fn handle_connection(
     target: TargetConfig,
     policy: PolicyConfig,
     sinks: Vec<Arc<dyn AuditSink>>,
+    rollback: RollbackConfig,
+    rollback_sinks: Vec<Arc<dyn RollbackSink>>,
     store: SessionStore,
     issuer: SessionIssuer,
     fail_closed: bool,
@@ -80,6 +83,8 @@ pub(crate) async fn handle_connection(
         target,
         policy,
         sinks,
+        rollback,
+        rollback_sinks,
         store: store.clone(),
         session: verified.session,
         fail_closed,
@@ -96,6 +101,8 @@ struct ProxyLoop {
     target: TargetConfig,
     policy: PolicyConfig,
     sinks: Vec<Arc<dyn AuditSink>>,
+    rollback: RollbackConfig,
+    rollback_sinks: Vec<Arc<dyn RollbackSink>>,
     store: SessionStore,
     session: Session,
     fail_closed: bool,
@@ -109,6 +116,8 @@ async fn proxy_loop(loop_state: ProxyLoop) -> Result<()> {
         target,
         policy,
         sinks,
+        rollback,
+        rollback_sinks,
         store,
         session,
         fail_closed,
@@ -118,6 +127,13 @@ async fn proxy_loop(loop_state: ProxyLoop) -> Result<()> {
         policy: &policy,
         sinks: &sinks,
         session: &session,
+        fail_closed,
+    };
+    let rollback_context = RollbackContext {
+        config: &rollback,
+        sinks: &rollback_sinks,
+        session: &session,
+        target: &target,
         fail_closed,
     };
     let mut extended = ExtendedQueryState::default();
@@ -140,7 +156,7 @@ async fn proxy_loop(loop_state: ProxyLoop) -> Result<()> {
                     .context("invalid Query message")?
                     .to_owned();
                 tokio::select! {
-                    result = handle_query(&statement, &upstream, &mut writer, &query_context) => result?,
+                    result = handle_query(&statement, &upstream, &mut writer, &query_context, &rollback_context) => result?,
                     reason = wait_for_session_end(&store, &session) => {
                         write_error(&mut writer, "57P01", session_disconnect_message(reason?)).await?;
                         return Ok(());
@@ -220,7 +236,7 @@ async fn proxy_loop(loop_state: ProxyLoop) -> Result<()> {
                 };
                 let emit_row_description = !extended.described_portals.remove(portal);
                 tokio::select! {
-                    result = handle_extended_query(&statement, &upstream, &mut writer, &query_context, emit_row_description) => result?,
+                    result = handle_extended_query(&statement, &upstream, &mut writer, &query_context, &rollback_context, emit_row_description) => result?,
                     reason = wait_for_session_end(&store, &session) => {
                         write_error(&mut writer, "57P01", session_disconnect_message(reason?)).await?;
                         return Ok(());

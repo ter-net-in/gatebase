@@ -5,13 +5,15 @@ mod decision;
 mod engine;
 mod error;
 mod ids;
+mod rollback;
 mod session;
 
-pub use access::{AccessApproval, AccessSignal};
+pub use access::{AccessSignal, AccessToken};
 pub use audit::AuditEvent;
 pub use connection::ActiveConnection;
 pub use decision::{Decision, RiskLevel};
 pub use engine::DbEngine;
 pub use error::GatebaseError;
 pub use ids::{AuditEventId, SessionId};
+pub use rollback::RollbackArtifact;
 pub use session::Session;

@@ -3,8 +3,9 @@ use gatebase_core::{Session, SessionId};
 
 pub fn new_session(
     actor: String,
-    repo: String,
-    pr: Option<i64>,
+    source_type: String,
+    github_repo: Option<String>,
+    issue: Option<i64>,
     target: String,
     ttl_minutes: i64,
 ) -> Session {
@@ -12,8 +13,9 @@ pub fn new_session(
     Session {
         id: SessionId::new(),
         actor,
-        github_repo: repo,
-        pull_request: pr,
+        source_type,
+        github_repo,
+        issue,
         target,
         scopes: vec!["read".to_owned(), "write".to_owned()],
         created_at: now,

@@ -1,7 +1,8 @@
 use anyhow::Result;
 use chrono::Utc;
-use gatebase_core::{AccessApproval, ActiveConnection, Session, SessionId};
-use gatebase_metadata::MetadataStore;
+use gatebase_core::{AccessToken, ActiveConnection, AuditEvent, Session, SessionId};
+use gatebase_metadata::{AuditEventFilter, MetadataStore, PruneCutoffs, PruneResult};
+use sha2::{Digest, Sha256};
 use std::path::Path;
 
 #[derive(Debug, Clone)]
@@ -37,27 +38,24 @@ impl SessionStore {
         self.metadata.list_sessions().await
     }
 
-    pub async fn create_access_approval(&self, approval: &AccessApproval) -> Result<()> {
-        self.metadata.create_access_approval(approval).await
+    pub async fn create_access_token(&self, token: &AccessToken) -> Result<()> {
+        self.metadata.create_access_token(token).await
     }
 
-    pub async fn find_active_access_approval(
+    pub async fn find_active_access_token(
         &self,
         repo: &str,
-        pull_request: Option<i64>,
+        issue: i64,
         target: &str,
-        actor: &str,
-        approvers: &[String],
-    ) -> Result<Option<AccessApproval>> {
+    ) -> Result<Option<AccessToken>> {
         self.metadata
-            .find_active_access_approval(
-                repo,
-                pull_request,
-                target,
-                actor,
-                approvers,
-                Utc::now().to_rfc3339(),
-            )
+            .find_active_access_token(repo, issue, target, Utc::now().to_rfc3339())
+            .await
+    }
+
+    pub async fn consume_access_token(&self, token: &str) -> Result<Option<AccessToken>> {
+        self.metadata
+            .consume_access_token(&hash_access_token(token), Utc::now().to_rfc3339())
             .await
     }
 
@@ -75,8 +73,23 @@ impl SessionStore {
         self.metadata.list_active_connections().await
     }
 
+    pub async fn list_audit_events(&self, filter: AuditEventFilter) -> Result<Vec<AuditEvent>> {
+        self.metadata.list_audit_events(filter).await
+    }
+
+    pub async fn prune(&self, cutoffs: &PruneCutoffs, dry_run: bool) -> Result<PruneResult> {
+        self.metadata.prune(cutoffs, dry_run).await
+    }
+
     #[must_use]
     pub fn metadata(&self) -> &MetadataStore {
         &self.metadata
     }
+}
+
+#[must_use]
+pub fn hash_access_token(token: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    format!("{:x}", hasher.finalize())
 }

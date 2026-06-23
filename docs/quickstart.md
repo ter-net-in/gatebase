@@ -32,37 +32,22 @@ Run MySQL proxy:
 cargo run -p gatebase-cli -- proxy mysql --config examples/gatebase.yaml
 ```
 
-Create a CLI approval through the broker when `cli_approval` is required:
+Create a local/admin session if the target has `allow_cli_sessions: true`:
 
 ```bash
-cargo run -p gatebase-cli -- access approve \
-  --broker http://127.0.0.1:8080 \
-  --repo gatebase/gatebase \
+cargo run -p gatebase-cli -- session create-local \
+  --config examples/gatebase.yaml \
   --target prod-pg \
-  --approver security-oncall \
-  --ttl-minutes 30
+  --actor alice
 ```
 
-If approval must not be tied to a pull request, the broker config must explicitly set:
-
-```yaml
-- type: "cli_approval"
-  approvers:
-    - "security-oncall"
-  allow_without_pull_request: true
-```
-
-Create a session through the broker:
+Create a session through the broker from a GitHub issue token:
 
 ```bash
 cargo run -p gatebase-cli -- session create \
   --broker http://127.0.0.1:8080 \
-  --actor alice \
-  --repo gatebase/gatebase \
-  --target prod-pg
+  --token gb_at_...
 ```
-
-Add `--pull-request 123` when GitHub pull-request signals are required.
 
 Run Docker-backed E2E tests explicitly:
 

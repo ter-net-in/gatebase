@@ -1,17 +1,17 @@
 use crate::dto::{
-    CreateAccessApprovalRequest, CreateAccessApprovalResponse, CreateSessionRequest,
-    CreateSessionResponse, SessionResponse,
+    AuditEventResponse, AuditQuery, CreateSessionRequest, CreateSessionResponse,
+    GitHubWebhookPayload, SessionResponse,
 };
 use crate::state::AppState;
 use axum::body::Bytes;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
 use axum::http::StatusCode;
 use axum::Json;
 use chrono::{Duration, Utc};
-use gatebase_core::{AccessApproval, AccessSignal, SessionId};
+use gatebase_core::{AccessToken, SessionId};
 use gatebase_github::{verify_webhook_signature, AccessRequest, GitProvider};
-use gatebase_session::new_session;
+use gatebase_session::{hash_access_token, new_session, AuditEventFilter};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -27,14 +27,45 @@ pub(crate) async fn list_sessions(
         .map(|session| SessionResponse {
             session_id: session.id.to_string(),
             actor: session.actor,
-            repo: session.github_repo,
-            pull_request: session.pull_request,
+            github_repo: session.github_repo.unwrap_or_default(),
+            issue: session.issue,
             target: session.target,
             expires_at: session.expires_at.to_rfc3339(),
             revoked_at: session.revoked_at.map(|time| time.to_rfc3339()),
         })
         .collect();
     Ok(Json(sessions))
+}
+
+pub(crate) async fn list_audit_events(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<AuditQuery>,
+) -> Result<Json<Vec<AuditEventResponse>>, String> {
+    let events = state
+        .store
+        .list_audit_events(AuditEventFilter {
+            actor: query.actor,
+            target: query.target,
+            decision: query.decision,
+            limit: query.limit,
+        })
+        .await
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(|event| AuditEventResponse {
+            id: event.id.to_string(),
+            session_id: event.session_id.to_string(),
+            actor: event.actor,
+            target: event.target,
+            engine: event.engine.to_string(),
+            statement: event.statement,
+            decision: format!("{:?}", event.decision).to_ascii_lowercase(),
+            rows_affected: event.rows_affected,
+            error: event.error,
+            created_at: event.created_at.to_rfc3339(),
+        })
+        .collect();
+    Ok(Json(events))
 }
 
 pub(crate) async fn revoke_session(
@@ -66,56 +97,47 @@ pub(crate) async fn github_webhook(
     if !verify_webhook_signature(&github.webhook_secret, &body, signature) {
         return Err(StatusCode::UNAUTHORIZED);
     }
-    Ok(StatusCode::ACCEPTED)
-}
-
-pub(crate) async fn create_access_approval(
-    State(state): State<Arc<AppState>>,
-    Json(request): Json<CreateAccessApprovalRequest>,
-) -> Result<Json<CreateAccessApprovalResponse>, String> {
-    let now = Utc::now();
-    let approval = AccessApproval {
-        id: format!("appr_{}", Uuid::new_v4().simple()),
-        repo: request.repo,
-        pull_request: request.pull_request,
-        target: request.target,
-        actor: request.actor,
-        approver: request.approver,
-        reason: request.reason,
-        created_at: now,
-        expires_at: request
-            .ttl_minutes
-            .map(|minutes| now + Duration::minutes(minutes)),
+    let event = headers
+        .get("x-github-event")
+        .and_then(|value| value.to_str().ok())
+        .ok_or(StatusCode::BAD_REQUEST)?;
+    if event != "issues" {
+        return Ok(StatusCode::ACCEPTED);
+    }
+    let payload: GitHubWebhookPayload =
+        serde_json::from_slice(&body).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let Some(action) = payload.action.as_deref() else {
+        return Ok(StatusCode::ACCEPTED);
     };
-    state
-        .store
-        .create_access_approval(&approval)
-        .await
-        .map_err(|error| error.to_string())?;
-
-    Ok(Json(CreateAccessApprovalResponse {
-        approval_id: approval.id,
-        expires_at: approval.expires_at.map(|time| time.to_rfc3339()),
-    }))
+    if !matches!(action, "opened" | "reopened" | "labeled" | "edited") {
+        return Ok(StatusCode::ACCEPTED);
+    }
+    let Some(issue) = payload.issue else {
+        return Ok(StatusCode::ACCEPTED);
+    };
+    if let Err(error) = mint_issue_access_token(&state, &payload.repository.full_name, issue.number).await {
+        tracing::warn!(%error, "failed to mint issue access token");
+    }
+    Ok(StatusCode::ACCEPTED)
 }
 
 pub(crate) async fn create_session(
     State(state): State<Arc<AppState>>,
     Json(request): Json<CreateSessionRequest>,
 ) -> Result<Json<CreateSessionResponse>, String> {
-    let access = AccessRequest {
-        actor: request.actor.clone(),
-        repo: request.repo.clone(),
-        pull_request: request.pull_request,
-        target: request.target.clone(),
-    };
-    ensure_access_allowed(&state, &access).await?;
+    let access_token = state
+        .store
+        .consume_access_token(&request.token)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "invalid or expired access token".to_owned())?;
 
     let session = new_session(
-        request.actor,
-        request.repo,
-        request.pull_request,
-        request.target.clone(),
+        access_token.actor.clone(),
+        "github_issue".to_owned(),
+        Some(access_token.github_repo.clone()),
+        Some(access_token.issue),
+        access_token.target.clone(),
         15,
     );
     state
@@ -131,12 +153,13 @@ pub(crate) async fn create_session(
         .config
         .targets
         .iter()
-        .find(|target| target.name == request.target)
-        .ok_or_else(|| format!("unknown target {}", request.target))?;
+        .find(|target| target.name == access_token.target)
+        .ok_or_else(|| format!("unknown target {}", access_token.target))?;
     let host = target
         .public_host
         .as_deref()
         .map(str::to_owned)
+        .or_else(|| public_url_host(&state.config.server.public_url))
         .unwrap_or_else(|| target.listen.ip().to_string());
     let port = target.public_port.unwrap_or_else(|| target.listen.port());
     let connection_string = format!(
@@ -151,47 +174,86 @@ pub(crate) async fn create_session(
     }))
 }
 
-async fn ensure_access_allowed(state: &AppState, access: &AccessRequest) -> Result<(), String> {
-    if !state.config.access.allowed_repositories.is_empty()
-        && !state
-            .config
-            .access
-            .allowed_repositories
-            .iter()
-            .any(|repo| repo == &access.repo)
+async fn mint_issue_access_token(state: &AppState, repo: &str, issue: i64) -> Result<(), String> {
+    let target = state
+        .config
+        .targets
+        .iter()
+        .find(|target| target.access.github_repo == repo)
+        .ok_or_else(|| format!("no target configured for repo {repo}"))?;
+    let access = AccessRequest {
+        github_repo: repo.to_owned(),
+        issue,
+        target: target.name.clone(),
+    };
+    ensure_access_allowed(state, target, &access).await?;
+    let now = Utc::now();
+    if state
+        .store
+        .find_active_access_token(repo, issue, &target.name)
+        .await
+        .map_err(|error| error.to_string())?
+        .is_some()
     {
-        return Err(format!("repository {} is not allowed", access.repo));
+        return Ok(());
     }
+    let issue_data = state
+        .github
+        .issue(repo, issue)
+        .await
+        .map_err(|error| error.to_string())?;
+    let raw_token = format!("gb_at_{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+    let expires_at = now + Duration::minutes(parse_minutes(&target.access.access_token_ttl)?);
+    let token = AccessToken {
+        id: format!("at_{}", Uuid::new_v4().simple()),
+        token_hash: hash_access_token(&raw_token),
+        actor: issue_data.user.login,
+        github_repo: repo.to_owned(),
+        issue,
+        target: target.name.clone(),
+        created_at: now,
+        expires_at,
+        used_at: None,
+    };
+    state
+        .store
+        .create_access_token(&token)
+        .await
+        .map_err(|error| error.to_string())?;
+    let body = format!(
+        "Gatebase access approved.\n\nToken:\n{raw_token}\n\nUse:\n`gatebase session create --token {raw_token}`\n\nExpires at {}.",
+        expires_at.to_rfc3339()
+    );
+    state
+        .github
+        .comment_issue(repo, issue, &body)
+        .await
+        .map_err(|error| error.to_string())?;
+    state
+        .github
+        .close_issue(repo, issue)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
 
-    for signal in &state.config.access.required_signals {
-        if let AccessSignal::CliApproval {
-            approvers,
-            allow_without_pull_request,
-        } = signal
-        {
-            if access.pull_request.is_none() && !allow_without_pull_request {
-                return Err(
-                    "required CLI approval is not configured to allow requests without pull requests"
-                        .to_owned(),
-                );
-            }
-            let approval = state
-                .store
-                .find_active_access_approval(
-                    &access.repo,
-                    access.pull_request,
-                    &access.target,
-                    &access.actor,
-                    approvers,
-                )
-                .await
-                .map_err(|error| error.to_string())?;
-            if approval.is_none() {
-                return Err("required CLI approval not found".to_owned());
-            }
-            continue;
-        }
+fn public_url_host(public_url: &str) -> Option<String> {
+    let without_scheme = public_url.split_once("://")?.1;
+    let authority = without_scheme.split('/').next()?.split('@').next_back()?;
+    let host = if let Some(rest) = authority.strip_prefix('[') {
+        rest.split_once(']')?.0
+    } else {
+        authority.split(':').next()?
+    };
+    (!host.is_empty()).then(|| host.to_owned())
+}
 
+async fn ensure_access_allowed(
+    state: &AppState,
+    target: &gatebase_config::TargetConfig,
+    access: &AccessRequest,
+) -> Result<(), String> {
+    for signal in &target.access.required_signals {
         let evaluation = state
             .github
             .evaluate_signal(access, signal)
@@ -207,141 +269,31 @@ async fn ensure_access_allowed(state: &AppState, access: &AccessRequest) -> Resu
     Ok(())
 }
 
+fn parse_minutes(value: &str) -> Result<i64, String> {
+    value
+        .strip_suffix('m')
+        .unwrap_or(value)
+        .parse::<i64>()
+        .map_err(|_| format!("invalid minute duration {value}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gatebase_config::{
-        AccessConfig, AuditConfig, Config, MetadataConfig, ServerConfig, SessionsConfig,
-    };
-    use gatebase_github::GitHubProvider;
-    use gatebase_session::{SessionIssuer, SessionStore};
-    use std::collections::HashMap;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
-    const REPO: &str = "gatebase/gatebase";
-    const TARGET: &str = "prod-pg";
-    const APPROVER: &str = "security-oncall";
-
-    async fn test_store() -> SessionStore {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!(
-            "gatebase-broker-test-{}-{nanos}.db",
-            std::process::id()
-        ));
-        // `open` creates the file and runs migrations.
-        SessionStore::open(path).await.unwrap()
-    }
-
-    fn state_with_signal(signal: AccessSignal, store: SessionStore) -> AppState {
-        let config = Config {
-            server: ServerConfig {
-                public_url: "http://localhost:8080".to_owned(),
-                broker_listen: "127.0.0.1:8080".parse().unwrap(),
-            },
-            metadata: MetadataConfig {
-                sqlite_path: "unused.db".into(),
-            },
-            sessions: SessionsConfig {
-                default_ttl: "15m".to_owned(),
-                max_ttl: "30m".to_owned(),
-                signing_key_file: "unused.key".into(),
-            },
-            github: None,
-            access: AccessConfig {
-                allowed_repositories: Vec::new(),
-                required_signals: vec![signal],
-            },
-            audit: AuditConfig {
-                fail_closed: true,
-                sinks: Vec::new(),
-            },
-            targets: Vec::new(),
-            policies: HashMap::new(),
-        };
-        AppState {
-            config,
-            store,
-            issuer: SessionIssuer::new(b"test-secret"),
-            github: GitHubProvider::disabled(),
-        }
-    }
-
-    fn cli_approval(allow_without_pull_request: bool) -> AccessSignal {
-        AccessSignal::CliApproval {
-            approvers: vec![APPROVER.to_owned()],
-            allow_without_pull_request,
-        }
-    }
-
-    fn request_without_pr() -> AccessRequest {
-        AccessRequest {
-            actor: "alice".to_owned(),
-            repo: REPO.to_owned(),
-            pull_request: None,
-            target: TARGET.to_owned(),
-        }
-    }
-
-    async fn insert_no_pr_approval(store: &SessionStore) {
-        store
-            .create_access_approval(&AccessApproval {
-                id: Uuid::new_v4().to_string(),
-                repo: REPO.to_owned(),
-                pull_request: None,
-                target: TARGET.to_owned(),
-                actor: None,
-                approver: APPROVER.to_owned(),
-                reason: None,
-                created_at: Utc::now(),
-                expires_at: None,
-            })
-            .await
-            .unwrap();
-    }
-
-    // Flag false (the default): a request without a PR is rejected by the gate
-    // before any approval lookup, even when a matching approval exists.
-    #[tokio::test]
-    async fn denies_request_without_pr_when_flag_is_false() {
-        let store = test_store().await;
-        insert_no_pr_approval(&store).await;
-        let state = state_with_signal(cli_approval(false), store);
-
-        let error = ensure_access_allowed(&state, &request_without_pr())
-            .await
-            .expect_err("no-PR request must be denied when the flag is false");
-        assert!(
-            error.contains("without pull requests"),
-            "unexpected error: {error}"
+    #[test]
+    fn parses_public_url_host_for_connection_string_fallback() {
+        assert_eq!(
+            public_url_host("https://gatebase.example.com"),
+            Some("gatebase.example.com".to_owned())
         );
-    }
-
-    // Flag true: a request without a PR is allowed when a matching approval exists.
-    #[tokio::test]
-    async fn allows_request_without_pr_when_flag_true_and_approval_exists() {
-        let store = test_store().await;
-        insert_no_pr_approval(&store).await;
-        let state = state_with_signal(cli_approval(true), store);
-
-        let result = ensure_access_allowed(&state, &request_without_pr()).await;
-        assert!(result.is_ok(), "expected access allowed, got {result:?}");
-    }
-
-    // Flag true but no approval recorded: the request is still denied.
-    #[tokio::test]
-    async fn denies_request_without_pr_when_flag_true_but_no_approval() {
-        let store = test_store().await;
-        let state = state_with_signal(cli_approval(true), store);
-
-        let error = ensure_access_allowed(&state, &request_without_pr())
-            .await
-            .expect_err("no-PR request must be denied without a matching approval");
-        assert!(
-            error.contains("approval not found"),
-            "unexpected error: {error}"
+        assert_eq!(
+            public_url_host("http://127.0.0.1:8080"),
+            Some("127.0.0.1".to_owned())
+        );
+        assert_eq!(
+            public_url_host("https://user:pass@gatebase.example.com/path"),
+            Some("gatebase.example.com".to_owned())
         );
     }
 }

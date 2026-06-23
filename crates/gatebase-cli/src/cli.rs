@@ -29,9 +29,13 @@ pub(crate) enum Command {
         #[command(subcommand)]
         command: SessionCommand,
     },
-    Access {
+    Audit {
         #[command(subcommand)]
-        command: AccessCommand,
+        command: AuditCommand,
+    },
+    Maintenance {
+        #[command(subcommand)]
+        command: MaintenanceCommand,
     },
 }
 
@@ -61,13 +65,15 @@ pub(crate) enum SessionCommand {
         #[arg(long, default_value = "http://127.0.0.1:8080")]
         broker: String,
         #[arg(long)]
-        actor: String,
+        token: String,
+    },
+    CreateLocal {
         #[arg(long)]
-        repo: String,
-        #[arg(long)]
-        pull_request: Option<i64>,
+        config: PathBuf,
         #[arg(long)]
         target: String,
+        #[arg(long)]
+        actor: String,
     },
     List {
         #[arg(long)]
@@ -81,23 +87,31 @@ pub(crate) enum SessionCommand {
 }
 
 #[derive(Debug, Subcommand)]
-pub(crate) enum AccessCommand {
-    Approve {
-        #[arg(long, default_value = "http://127.0.0.1:8080")]
-        broker: String,
+pub(crate) enum AuditCommand {
+    List {
         #[arg(long)]
-        repo: String,
+        config: Option<PathBuf>,
         #[arg(long)]
-        pull_request: Option<i64>,
-        #[arg(long)]
-        target: String,
+        broker: Option<String>,
         #[arg(long)]
         actor: Option<String>,
         #[arg(long)]
-        approver: String,
+        target: Option<String>,
         #[arg(long)]
-        reason: Option<String>,
+        decision: Option<String>,
+        #[arg(long, default_value_t = 100)]
+        limit: u64,
         #[arg(long)]
-        ttl_minutes: Option<i64>,
+        json: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum MaintenanceCommand {
+    Prune {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        dry_run: bool,
     },
 }

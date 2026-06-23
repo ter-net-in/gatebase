@@ -3,8 +3,8 @@
 Gatebase assumes:
 
 - users satisfy configured broker access signals before receiving session tokens
-- GitHub-specific access signals require pull-request context
-- CLI approvals can satisfy no-PR access only when broker config sets `allow_without_pull_request: true`
+- GitHub-specific access signals use GitHub issues and short-lived one-time tokens
+- local CLI sessions are allowed only when target config sets `allow_cli_sessions: true`
 - production database network access is restricted to Gatebase proxies
 - audit sinks are protected from modification by normal users
 - backups and PITR/WAL remain enabled for real recovery

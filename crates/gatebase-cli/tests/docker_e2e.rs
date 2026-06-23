@@ -1,6 +1,5 @@
 use anyhow::Context;
 use mysql_async::prelude::Queryable;
-use serde_json::Value;
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -125,12 +124,45 @@ async fn docker_postgres_and_mysql_proxy_e2e() -> anyhow::Result<()> {
     wait_for_tcp(SocketAddr::from(([127, 0, 0, 1], pg_proxy_port))).await?;
     wait_for_tcp(SocketAddr::from(([127, 0, 0, 1], mysql_proxy_port))).await?;
 
-    exercise_postgres_proxy(broker_port, pg_proxy_port)
+    exercise_postgres_proxy(&bin, &config_path, broker_port, pg_proxy_port)
         .await
         .context("Postgres proxy E2E failed")?;
-    exercise_mysql_proxy(broker_port, mysql_proxy_port)
+    exercise_mysql_proxy(&bin, &config_path, mysql_proxy_port, mysql_upstream_port)
         .await
         .context("MySQL proxy E2E failed")?;
+
+    let audit_response = http_request(
+        broker_port,
+        "GET /api/audit/events?target=prod-pg&limit=20 HTTP/1.1",
+        None,
+    )?;
+    assert!(
+        audit_response.contains("SELECT 1"),
+        "broker audit API should return audit events"
+    );
+
+    let audit_cli = Command::new(&bin)
+        .args([
+            "audit",
+            "list",
+            "--broker",
+            &format!("http://127.0.0.1:{broker_port}"),
+            "--target",
+            "prod-pg",
+            "--limit",
+            "20",
+            "--json",
+        ])
+        .output()?;
+    anyhow::ensure!(
+        audit_cli.status.success(),
+        "audit CLI failed: {}",
+        String::from_utf8_lossy(&audit_cli.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&audit_cli.stdout).contains("SELECT 1"),
+        "audit CLI should print broker audit events"
+    );
 
     broker.kill();
     pg_proxy.kill();
@@ -149,13 +181,38 @@ async fn docker_postgres_and_mysql_proxy_e2e() -> anyhow::Result<()> {
         audit.contains("DROP TABLE"),
         "audit should contain blocked query"
     );
+    let rollback = fs::read_to_string(temp.path().join("rollback.jsonl"))?;
+    assert!(
+        rollback.contains("gatebase_rollback_e2e"),
+        "rollback artifacts should contain covered Postgres table"
+    );
+    assert!(
+        rollback.contains("gatebase_mysql_rollback_e2e"),
+        "rollback artifacts should contain covered MySQL table"
+    );
+    assert!(
+        rollback.contains("before"),
+        "rollback artifacts should contain Postgres before-image row"
+    );
+    assert!(
+        rollback.contains("mysql-before"),
+        "rollback artifacts should contain MySQL before-image row"
+    );
+    assert!(
+        rollback.contains("inverse_sql"),
+        "rollback artifacts should contain inverse SQL"
+    );
 
     Ok(())
 }
 
-async fn exercise_postgres_proxy(broker_port: u16, proxy_port: u16) -> anyhow::Result<()> {
-    let session = create_session(broker_port, "prod-pg")
-        .await
+async fn exercise_postgres_proxy(
+    bin: &Path,
+    config_path: &Path,
+    broker_port: u16,
+    proxy_port: u16,
+) -> anyhow::Result<()> {
+    let session = create_session(bin, config_path, "prod-pg")
         .context("create Postgres session")?;
     let config = format!(
         "host=127.0.0.1 port={proxy_port} user=alice password={} dbname=app sslmode=disable",
@@ -196,6 +253,23 @@ async fn exercise_postgres_proxy(broker_port: u16, proxy_port: u16) -> anyhow::R
         "blocked Postgres SQL must return an error"
     );
 
+    client
+        .simple_query("CREATE TABLE gatebase_rollback_e2e (id integer PRIMARY KEY, name text)")
+        .await
+        .context("create rollback E2E table")?;
+    client
+        .simple_query("INSERT INTO gatebase_rollback_e2e (id, name) VALUES (1, 'before')")
+        .await
+        .context("insert rollback E2E row")?;
+    client
+        .simple_query("UPDATE gatebase_rollback_e2e SET name = 'after' WHERE id IN (1)")
+        .await
+        .context("run rollback-covered Postgres update")?;
+    client
+        .simple_query("DELETE FROM gatebase_rollback_e2e WHERE id IN (1)")
+        .await
+        .context("run rollback-covered Postgres delete")?;
+
     revoke_session(broker_port, &session.id)?;
     sleep(Duration::from_secs(2)).await;
     let revoked = client.simple_query("SELECT 1").await;
@@ -206,9 +280,32 @@ async fn exercise_postgres_proxy(broker_port: u16, proxy_port: u16) -> anyhow::R
     Ok(())
 }
 
-async fn exercise_mysql_proxy(broker_port: u16, proxy_port: u16) -> anyhow::Result<()> {
-    let session = create_session(broker_port, "prod-mysql")
+async fn exercise_mysql_proxy(
+    bin: &Path,
+    config_path: &Path,
+    proxy_port: u16,
+    upstream_port: u16,
+) -> anyhow::Result<()> {
+    let upstream_opts = mysql_async::OptsBuilder::default()
+        .ip_or_hostname("127.0.0.1")
+        .tcp_port(upstream_port)
+        .user(Some("app"))
+        .pass(Some("secret"))
+        .db_name(Some("app"));
+    let mut upstream = mysql_async::Conn::new(upstream_opts)
         .await
+        .context("connect direct MySQL upstream for rollback setup")?;
+    upstream
+        .query_drop("CREATE TABLE gatebase_mysql_rollback_e2e (id integer PRIMARY KEY, name text)")
+        .await
+        .context("create MySQL rollback E2E table")?;
+    upstream
+        .query_drop("INSERT INTO gatebase_mysql_rollback_e2e (id, name) VALUES (1, 'mysql-before')")
+        .await
+        .context("insert MySQL rollback E2E row")?;
+    upstream.disconnect().await?;
+
+    let session = create_session(bin, config_path, "prod-mysql")
         .context("create MySQL session")?;
     let opts = mysql_async::OptsBuilder::default()
         .ip_or_hostname("127.0.0.1")
@@ -226,6 +323,12 @@ async fn exercise_mysql_proxy(broker_port: u16, proxy_port: u16) -> anyhow::Resu
         .context("run MySQL SELECT 2 through Gatebase")?;
     assert_eq!(value, Some(2));
 
+    conn.query_drop("UPDATE gatebase_mysql_rollback_e2e SET name = 'mysql-after' WHERE id IN (1)")
+        .await
+        .context("run rollback-covered MySQL update")?;
+    conn.query_drop("DELETE FROM gatebase_mysql_rollback_e2e WHERE id IN (1)")
+        .await
+        .context("run rollback-covered MySQL delete")?;
     let blocked = conn.query_drop("DROP TABLE definitely_blocked").await;
     assert!(blocked.is_err(), "blocked MySQL SQL must return an error");
     conn.disconnect().await?;
@@ -237,22 +340,34 @@ struct CreatedSession {
     token: String,
 }
 
-async fn create_session(broker_port: u16, target: &str) -> anyhow::Result<CreatedSession> {
-    let body = format!(
-        r#"{{"actor":"alice","repo":"gatebase/gatebase","pull_request":1,"target":"{target}"}}"#
+fn create_session(bin: &Path, config_path: &Path, target: &str) -> anyhow::Result<CreatedSession> {
+    let output = Command::new(bin)
+        .args([
+            "session",
+            "create-local",
+            "--config",
+            config_path.to_str().unwrap(),
+            "--target",
+            target,
+            "--actor",
+            "alice",
+        ])
+        .output()
+        .context("run gatebase session create-local")?;
+    anyhow::ensure!(
+        output.status.success(),
+        "create-local failed: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
-    let response = http_request(
-        broker_port,
-        "POST /api/sessions HTTP/1.1",
-        Some(("Content-Type: application/json", body)),
-    )?;
-    let value: Value = serde_json::from_str(&response)?;
-    let connection_string = value["connection_string"]
-        .as_str()
-        .ok_or_else(|| anyhow::anyhow!("missing connection_string in broker response"))?;
-    let id = value["session_id"]
-        .as_str()
-        .ok_or_else(|| anyhow::anyhow!("missing session_id in broker response"))?
+    let stdout = String::from_utf8(output.stdout)?;
+    let connection_string = stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("connection_string "))
+        .ok_or_else(|| anyhow::anyhow!("missing connection_string in create-local output"))?;
+    let id = stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("session_id "))
+        .ok_or_else(|| anyhow::anyhow!("missing session_id in create-local output"))?
         .to_owned();
     let token = connection_string
         .split_once("//")
@@ -355,6 +470,7 @@ fn write_config(
     let sqlite_path = dir.join("gatebase.db");
     let signing_key_file = dir.join("session.key");
     let audit_path = dir.join("audit.jsonl");
+    let rollback_path = dir.join("rollback.jsonl");
     let config = format!(
         r#"server:
   public_url: "http://127.0.0.1:{broker_port}"
@@ -381,9 +497,20 @@ audit:
     - type: "jsonl"
       path: "{}"
 
+rollback:
+  enabled: true
+  max_rows: 10
+  sinks:
+    - type: "sqlite"
+    - type: "jsonl"
+      path: "{}"
+
 targets:
   - name: "prod-pg"
     engine: "postgres"
+    access:
+      github_repo: "gatebase/gatebase-pg"
+      allow_cli_sessions: true
     listen: "127.0.0.1:{pg_proxy_port}"
     upstream: "127.0.0.1:{pg_upstream_port}"
     database: "app"
@@ -392,6 +519,9 @@ targets:
       password_env: "PG_UPSTREAM_PASSWORD"
   - name: "prod-mysql"
     engine: "mysql"
+    access:
+      github_repo: "gatebase/gatebase-mysql"
+      allow_cli_sessions: true
     listen: "127.0.0.1:{mysql_proxy_port}"
     upstream: "127.0.0.1:{mysql_upstream_port}"
     database: "app"
@@ -415,6 +545,7 @@ policies:
         yaml_path(&signing_key_file),
         yaml_path(&dir.join("github.pem")),
         yaml_path(&audit_path),
+        yaml_path(&rollback_path),
     );
     let path = dir.join("gatebase.yaml");
     fs::write(&path, config)?;

@@ -17,24 +17,6 @@ github:
   webhook_secret: "local-dev-secret"
   api_base_url: "https://api.github.com"
 
-access:
-  allowed_repositories:
-    - "gatebase/gatebase"
-  required_signals:
-    - type: "github_pull_request_open"
-    - type: "github_pull_request_approved"
-    - type: "github_checks_passed"
-      checks:
-        - "ci"
-    - type: "github_labels"
-      labels:
-        - "db-access-approved"
-    # Uncomment to require an operator-created approval before issuing sessions:
-    # - type: "cli_approval"
-    #   approvers:
-    #     - "security-oncall"
-    #   allow_without_pull_request: false
-
 audit:
   fail_closed: true
   sinks:
@@ -42,9 +24,32 @@ audit:
     - type: "jsonl"
       path: "./tmp/audit.jsonl"
 
+rollback:
+  enabled: false
+  max_rows: 100
+  sinks:
+    - type: "sqlite"
+    - type: "jsonl"
+      path: "./tmp/rollback.jsonl"
+
+retention:
+  audit_days: 90
+  rollback_days: 30
+  session_days: 30
+  approval_days: 30
+  active_connection_days: 7
+
 targets:
   - name: "prod-pg"
     engine: "postgres"
+    access:
+      github_repo: "gatebase/gatebase"
+      access_token_ttl: "5m"
+      required_signals:
+        - type: "github_issue_open"
+        - type: "github_issue_labels"
+          labels:
+            - "approved"
     listen: "127.0.0.1:15432"
     upstream: "127.0.0.1:5432"
     database: "app"

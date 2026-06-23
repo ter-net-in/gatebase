@@ -17,7 +17,10 @@ pub async fn run(config: Config) -> Result<()> {
         )
     })?;
     let store = SessionStore::open(&config.metadata.sqlite_path).await?;
-    let requires_github = config.access.required_signals.iter().any(is_github_signal);
+    let requires_github = config
+        .targets
+        .iter()
+        .any(|target| target.access.required_signals.iter().any(is_github_signal));
     let github = if requires_github {
         let github = config
             .github
@@ -53,10 +56,6 @@ pub async fn run(config: Config) -> Result<()> {
 fn is_github_signal(signal: &AccessSignal) -> bool {
     matches!(
         signal,
-        AccessSignal::GitHubPullRequestOpen
-            | AccessSignal::GitHubPullRequestApproved
-            | AccessSignal::GitHubChecksPassed { .. }
-            | AccessSignal::GitHubLabels { .. }
-            | AccessSignal::GitHubCodeownersReviewed
+        AccessSignal::GitHubIssueOpen | AccessSignal::GitHubIssueLabels { .. }
     )
 }

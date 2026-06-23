@@ -2,11 +2,12 @@ use crate::audit::{write_audit, QueryContext};
 use crate::protocol::{
     handshake, read_packet, write_err, write_ok, write_result_set, COM_PING, COM_QUERY, COM_QUIT,
 };
+use crate::rollback::{capture_rollback_artifact, RollbackContext};
 use crate::upstream::upstream_opts;
 use anyhow::Result;
 use chrono::Utc;
-use gatebase_audit::AuditSink;
-use gatebase_config::{PolicyConfig, TargetConfig};
+use gatebase_audit::{AuditSink, RollbackSink};
+use gatebase_config::{PolicyConfig, RollbackConfig, TargetConfig};
 use gatebase_core::{ActiveConnection, Decision, Session};
 use gatebase_policy::decide;
 use gatebase_session::{SessionIssuer, SessionStore};
@@ -23,6 +24,8 @@ pub(crate) async fn handle_connection(
     target: TargetConfig,
     policy: PolicyConfig,
     sinks: Vec<Arc<dyn AuditSink>>,
+    rollback: RollbackConfig,
+    rollback_sinks: Vec<Arc<dyn RollbackSink>>,
     store: SessionStore,
     issuer: SessionIssuer,
     fail_closed: bool,
@@ -65,6 +68,8 @@ pub(crate) async fn handle_connection(
         target,
         policy,
         sinks,
+        rollback,
+        rollback_sinks,
         store: store.clone(),
         session: verified.session,
         fail_closed,
@@ -81,6 +86,8 @@ struct CommandLoop<'a> {
     target: TargetConfig,
     policy: PolicyConfig,
     sinks: Vec<Arc<dyn AuditSink>>,
+    rollback: RollbackConfig,
+    rollback_sinks: Vec<Arc<dyn RollbackSink>>,
     store: SessionStore,
     session: Session,
     fail_closed: bool,
@@ -93,6 +100,8 @@ async fn command_loop(loop_state: CommandLoop<'_>) -> Result<()> {
         target,
         policy,
         sinks,
+        rollback,
+        rollback_sinks,
         store,
         session,
         fail_closed,
@@ -102,6 +111,13 @@ async fn command_loop(loop_state: CommandLoop<'_>) -> Result<()> {
         policy: &policy,
         sinks: &sinks,
         session: &session,
+        fail_closed,
+    };
+    let rollback_context = RollbackContext {
+        config: &rollback,
+        sinks: &rollback_sinks,
+        session: &session,
+        target: &target,
         fail_closed,
     };
 
@@ -126,11 +142,12 @@ async fn command_loop(loop_state: CommandLoop<'_>) -> Result<()> {
         };
         match command {
             COM_QUIT => return Ok(()),
-            COM_PING => write_ok(&mut stream, 1, 0).await?,
+            COM_PING => write_ok(&mut stream, packet.sequence.wrapping_add(1), 0).await?,
             COM_QUERY => {
                 let statement = String::from_utf8_lossy(body).to_string();
+                let response_sequence = packet.sequence.wrapping_add(1);
                 tokio::select! {
-                    result = handle_query(&mut stream, upstream, &statement, &query_context) => result?,
+                    result = handle_query(&mut stream, upstream, response_sequence, &statement, &query_context, &rollback_context) => result?,
                     reason = wait_for_session_end(&store, &session) => {
                         write_err(&mut stream, 1, 1045, session_disconnect_message(reason?)).await?;
                         return Ok(());
@@ -153,8 +170,10 @@ async fn command_loop(loop_state: CommandLoop<'_>) -> Result<()> {
 async fn handle_query(
     stream: &mut TcpStream,
     upstream: &mut mysql_async::Conn,
+    response_sequence: u8,
     statement: &str,
     context: &QueryContext<'_>,
+    rollback: &RollbackContext<'_>,
 ) -> Result<()> {
     let policy_decision = decide(statement, context.policy);
     if policy_decision.decision == Decision::Blocked {
@@ -168,7 +187,7 @@ async fn handle_query(
         .await?;
         write_err(
             stream,
-            1,
+            response_sequence,
             1142,
             policy_decision
                 .reason
@@ -179,17 +198,19 @@ async fn handle_query(
         return Ok(());
     }
 
+    capture_rollback_artifact(statement, upstream, rollback).await?;
+
     match timeout(QUERY_TIMEOUT, upstream.query_iter(statement)).await {
         Ok(Ok(mut result)) => {
             let columns = result.columns();
-            if let Some(columns) = columns {
+            if let Some(columns) = columns.filter(|columns| !columns.is_empty()) {
                 let mut rows = Vec::new();
                 while let Some(row) = result.next().await? {
                     rows.push(row);
                 }
                 let rows_affected = result.affected_rows() as i64;
                 result.drop_result().await?;
-                write_result_set(stream, columns, rows).await?;
+                write_result_set(stream, response_sequence, columns, rows).await?;
                 write_audit(
                     context,
                     statement,
@@ -201,7 +222,7 @@ async fn handle_query(
             } else {
                 let affected_rows = result.affected_rows();
                 result.drop_result().await?;
-                write_ok(stream, 1, affected_rows).await?;
+                write_ok(stream, response_sequence, affected_rows).await?;
                 write_audit(
                     context,
                     statement,
@@ -222,7 +243,7 @@ async fn handle_query(
                 Some(message.clone()),
             )
             .await?;
-            write_err(stream, 1, 1105, &message).await?;
+            write_err(stream, response_sequence, 1105, &message).await?;
         }
         Err(_) => {
             let message = "upstream MySQL query timed out".to_owned();
@@ -234,7 +255,7 @@ async fn handle_query(
                 Some(message.clone()),
             )
             .await?;
-            write_err(stream, 1, 1205, &message).await?;
+            write_err(stream, response_sequence, 1205, &message).await?;
         }
     }
     Ok(())

@@ -1,7 +1,7 @@
-use crate::AuditSink;
+use crate::{AuditSink, RollbackSink};
 use anyhow::Result;
 use async_trait::async_trait;
-use gatebase_core::AuditEvent;
+use gatebase_core::{AuditEvent, RollbackArtifact};
 use std::path::PathBuf;
 use tokio::io::AsyncWriteExt;
 
@@ -20,6 +20,39 @@ impl JsonlAuditSink {
 impl AuditSink for JsonlAuditSink {
     async fn write(&self, event: &AuditEvent) -> Result<()> {
         let line = serde_json::to_string(event)?;
+        if let Some(parent) = self
+            .path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        let mut file = tokio::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.path)
+            .await?;
+        file.write_all(line.as_bytes()).await?;
+        file.write_all(b"\n").await?;
+        Ok(())
+    }
+}
+
+pub struct JsonlRollbackSink {
+    path: PathBuf,
+}
+
+impl JsonlRollbackSink {
+    #[must_use]
+    pub fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+}
+
+#[async_trait]
+impl RollbackSink for JsonlRollbackSink {
+    async fn write(&self, artifact: &RollbackArtifact) -> Result<()> {
+        let line = serde_json::to_string(artifact)?;
         if let Some(parent) = self
             .path
             .parent()

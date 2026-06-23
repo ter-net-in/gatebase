@@ -1,5 +1,6 @@
 use crate::audit::build_sinks;
 use crate::connection::handle_connection;
+use crate::rollback::build_rollback_sinks;
 use anyhow::{Context, Result};
 use gatebase_config::Config;
 use gatebase_proxy_core::listen;
@@ -16,11 +17,14 @@ pub async fn run(config: Config) -> Result<()> {
     let store = SessionStore::open(&config.metadata.sqlite_path).await?;
     let issuer = SessionIssuer::new(&signing_secret);
     let sinks = build_sinks(&config, &store).await?;
+    let rollback_sinks = build_rollback_sinks(&config.rollback, &store).await?;
     for target in config.postgres_targets() {
         let listener = listen(target).await?;
         let target = target.clone();
         let policy = config.policies.get("default").cloned().unwrap_or_default();
         let sinks = sinks.clone();
+        let rollback_sinks = rollback_sinks.clone();
+        let rollback = config.rollback.clone();
         let store = store.clone();
         let issuer = issuer.clone();
         let fail_closed = config.audit.fail_closed;
@@ -31,6 +35,8 @@ pub async fn run(config: Config) -> Result<()> {
                         let target = target.clone();
                         let policy = policy.clone();
                         let sinks = sinks.clone();
+                        let rollback = rollback.clone();
+                        let rollback_sinks = rollback_sinks.clone();
                         let store = store.clone();
                         let issuer = issuer.clone();
                         tokio::spawn(async move {
@@ -39,6 +45,8 @@ pub async fn run(config: Config) -> Result<()> {
                                 target,
                                 policy,
                                 sinks,
+                                rollback,
+                                rollback_sinks,
                                 store,
                                 issuer,
                                 fail_closed,

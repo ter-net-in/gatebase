@@ -5,8 +5,9 @@ use chrono::{DateTime, Utc};
 pub struct Session {
     pub id: SessionId,
     pub actor: String,
-    pub github_repo: String,
-    pub pull_request: Option<i64>,
+    pub source_type: String,
+    pub github_repo: Option<String>,
+    pub issue: Option<i64>,
     pub target: String,
     pub scopes: Vec<String>,
     pub created_at: DateTime<Utc>,

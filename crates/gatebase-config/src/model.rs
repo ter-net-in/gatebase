@@ -1,4 +1,9 @@
-use crate::defaults::{default_broker_listen, default_fail_closed, default_github_api_base_url};
+use crate::defaults::{
+    default_active_connection_retention_days, default_approval_retention_days,
+    default_audit_retention_days, default_broker_listen, default_fail_closed,
+    default_github_api_base_url, default_rollback_max_rows, default_rollback_retention_days,
+    default_session_retention_days, default_sqlite_path,
+};
 use gatebase_core::{AccessSignal, DbEngine};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -8,12 +13,15 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     pub server: ServerConfig,
+    #[serde(default)]
     pub metadata: MetadataConfig,
     pub sessions: SessionsConfig,
     pub github: Option<GitHubConfig>,
-    #[serde(default)]
-    pub access: AccessConfig,
     pub audit: AuditConfig,
+    #[serde(default)]
+    pub rollback: RollbackConfig,
+    #[serde(default)]
+    pub retention: RetentionConfig,
     pub targets: Vec<TargetConfig>,
     pub policies: HashMap<String, PolicyConfig>,
 }
@@ -27,7 +35,16 @@ pub struct ServerConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct MetadataConfig {
+    #[serde(default = "default_sqlite_path")]
     pub sqlite_path: PathBuf,
+}
+
+impl Default for MetadataConfig {
+    fn default() -> Self {
+        Self {
+            sqlite_path: default_sqlite_path(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -47,14 +64,6 @@ pub struct GitHubConfig {
     pub api_base_url: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
-pub struct AccessConfig {
-    #[serde(default)]
-    pub allowed_repositories: Vec<String>,
-    #[serde(default)]
-    pub required_signals: Vec<AccessSignal>,
-}
-
 #[derive(Debug, Clone, Deserialize)]
 pub struct AuditConfig {
     #[serde(default = "default_fail_closed")]
@@ -70,9 +79,63 @@ pub enum AuditSinkConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct RollbackConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_rollback_max_rows")]
+    pub max_rows: u64,
+    #[serde(default)]
+    pub sinks: Vec<RollbackSinkConfig>,
+}
+
+impl Default for RollbackConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_rows: default_rollback_max_rows(),
+            sinks: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum RollbackSinkConfig {
+    Sqlite,
+    Jsonl { path: PathBuf },
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RetentionConfig {
+    #[serde(default = "default_audit_retention_days")]
+    pub audit_days: u64,
+    #[serde(default = "default_rollback_retention_days")]
+    pub rollback_days: u64,
+    #[serde(default = "default_session_retention_days")]
+    pub session_days: u64,
+    #[serde(default = "default_approval_retention_days")]
+    pub approval_days: u64,
+    #[serde(default = "default_active_connection_retention_days")]
+    pub active_connection_days: u64,
+}
+
+impl Default for RetentionConfig {
+    fn default() -> Self {
+        Self {
+            audit_days: default_audit_retention_days(),
+            rollback_days: default_rollback_retention_days(),
+            session_days: default_session_retention_days(),
+            approval_days: default_approval_retention_days(),
+            active_connection_days: default_active_connection_retention_days(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct TargetConfig {
     pub name: String,
     pub engine: DbEngine,
+    pub access: TargetAccessConfig,
     pub listen: SocketAddr,
     #[serde(default)]
     pub public_host: Option<String>,
@@ -81,6 +144,21 @@ pub struct TargetConfig {
     pub upstream: String,
     pub database: String,
     pub credentials: CredentialsConfig,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TargetAccessConfig {
+    pub github_repo: String,
+    #[serde(default = "default_access_token_ttl")]
+    pub access_token_ttl: String,
+    #[serde(default)]
+    pub allow_cli_sessions: bool,
+    #[serde(default)]
+    pub required_signals: Vec<AccessSignal>,
+}
+
+fn default_access_token_ttl() -> String {
+    "5m".to_owned()
 }
 
 #[derive(Debug, Clone, Deserialize)]

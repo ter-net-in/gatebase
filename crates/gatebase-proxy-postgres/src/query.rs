@@ -3,6 +3,7 @@ use crate::protocol::{
     write_command_complete, write_data_row, write_empty_query, write_error, write_no_data,
     write_row_description,
 };
+use crate::rollback::{capture_rollback_artifact, RollbackContext};
 use anyhow::Result;
 use gatebase_core::Decision;
 use gatebase_policy::decide;
@@ -17,8 +18,9 @@ pub(crate) async fn handle_query(
     upstream: &tokio_postgres::Client,
     writer: &mut OwnedWriteHalf,
     context: &QueryContext<'_>,
+    rollback: &RollbackContext<'_>,
 ) -> Result<()> {
-    handle_query_with_row_description(statement, upstream, writer, context, true).await
+    handle_query_with_row_description(statement, upstream, writer, context, rollback, true).await
 }
 
 pub(crate) async fn handle_extended_query(
@@ -26,10 +28,18 @@ pub(crate) async fn handle_extended_query(
     upstream: &tokio_postgres::Client,
     writer: &mut OwnedWriteHalf,
     context: &QueryContext<'_>,
+    rollback: &RollbackContext<'_>,
     emit_row_description: bool,
 ) -> Result<()> {
-    handle_query_with_row_description(statement, upstream, writer, context, emit_row_description)
-        .await
+    handle_query_with_row_description(
+        statement,
+        upstream,
+        writer,
+        context,
+        rollback,
+        emit_row_description,
+    )
+    .await
 }
 
 pub(crate) async fn describe_query(
@@ -90,6 +100,7 @@ async fn handle_query_with_row_description(
     upstream: &tokio_postgres::Client,
     writer: &mut OwnedWriteHalf,
     context: &QueryContext<'_>,
+    rollback: &RollbackContext<'_>,
     emit_row_description: bool,
 ) -> Result<()> {
     if statement.trim().is_empty() {
@@ -118,6 +129,8 @@ async fn handle_query_with_row_description(
         .await?;
         return Ok(());
     }
+
+    capture_rollback_artifact(statement, upstream, rollback).await?;
 
     match timeout(IO_TIMEOUT, upstream.simple_query(statement)).await {
         Ok(Ok(messages)) => {

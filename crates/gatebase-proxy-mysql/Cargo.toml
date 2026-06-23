@@ -17,6 +17,7 @@ gatebase-policy = { path = "../gatebase-policy" }
 gatebase-proxy-core = { path = "../gatebase-proxy-core" }
 gatebase-session = { path = "../gatebase-session" }
 mysql_async.workspace = true
+serde_json.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 uuid.workspace = true

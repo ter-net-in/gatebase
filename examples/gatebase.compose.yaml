@@ -10,10 +10,6 @@ sessions:
   max_ttl: "30m"
   signing_key_file: "/var/lib/gatebase/session.key"
 
-access:
-  allowed_repositories:
-    - "gatebase/gatebase"
-
 audit:
   fail_closed: true
   sinks:
@@ -24,6 +20,9 @@ audit:
 targets:
   - name: "prod-pg"
     engine: "postgres"
+    access:
+      github_repo: "gatebase/gatebase-pg"
+      allow_cli_sessions: true
     listen: "0.0.0.0:15432"
     public_host: "127.0.0.1"
     public_port: 15432
@@ -34,6 +33,9 @@ targets:
       password_env: "PG_UPSTREAM_PASSWORD"
   - name: "prod-mysql"
     engine: "mysql"
+    access:
+      github_repo: "gatebase/gatebase-mysql"
+      allow_cli_sessions: true
     listen: "0.0.0.0:13306"
     public_host: "127.0.0.1"
     public_port: 13306

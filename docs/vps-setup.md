@@ -59,7 +59,7 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     actor User
-    participant GitHub as GitHub PR
+    participant GitHub as GitHub Issue
     participant Broker as Gatebase Broker
     participant GHAPI as GitHub API
     participant SQLite as SQLite Metadata
@@ -67,21 +67,20 @@ sequenceDiagram
     participant DB as Upstream Database
     participant Audit as Audit Sinks
 
-    User->>GitHub: Open PR and satisfy configured signals
-    GitHub-->>Broker: Optional webhook event signed with X-Hub-Signature-256
+    User->>GitHub: Open issue in target access repo
+    GitHub-->>Broker: Issue webhook signed with X-Hub-Signature-256
     Broker->>Broker: Verify webhook HMAC if webhook received
-
-    User->>Broker: POST /api/sessions {actor, repo, pull_request, target}
-    Broker->>Broker: Check repo is in allowed_repositories
     Broker->>GHAPI: Create GitHub App JWT
     Broker->>GHAPI: Exchange JWT for installation token
-    Broker->>GHAPI: Fetch PR state, reviews, labels, checks/statuses
-    GHAPI-->>Broker: PR validation data
-    Broker->>Broker: Evaluate required_signals from config
+    Broker->>GHAPI: Fetch issue state and labels
+    GHAPI-->>Broker: Issue validation data
+    Broker->>Broker: Infer target from repo and evaluate target signals
 
     alt Access denied
-        Broker-->>User: 4xx denial reason
+        Broker-->>User: No token comment
     else Access allowed
+        Broker->>GitHub: Comment one-time token and close issue
+        User->>Broker: POST /api/sessions {token}
         Broker->>SQLite: Store short-lived session
         Broker-->>User: session_id, expires_at, connection_string
     end
@@ -217,19 +216,6 @@ github:
   webhook_secret: "change-me"
   api_base_url: "https://api.github.com"
 
-access:
-  allowed_repositories:
-    - "org/repo"
-  required_signals:
-    - type: "github_pull_request_open"
-    - type: "github_pull_request_approved"
-    - type: "github_checks_passed"
-      checks:
-        - "ci"
-    - type: "github_labels"
-      labels:
-        - "db-access-approved"
-
 audit:
   fail_closed: true
   sinks:
@@ -240,6 +226,14 @@ audit:
 targets:
   - name: "prod-pg"
     engine: "postgres"
+    access:
+      github_repo: "org/repo"
+      access_token_ttl: "5m"
+      required_signals:
+        - type: "github_issue_open"
+        - type: "github_issue_labels"
+          labels:
+            - "approved"
     listen: "0.0.0.0:15432"
     public_host: "gatebase.example.com"
     public_port: 15432
@@ -437,7 +431,7 @@ Create a session through the broker after configured GitHub signals pass:
 ```bash
 curl -sS https://gatebase.example.com/api/sessions \
   -H 'content-type: application/json' \
-  -d '{"actor":"alice","repo":"org/repo","pull_request":123,"target":"prod-pg"}'
+  -d '{"token":"gb_at_..."}'
 ```
 
 Use returned connection string with `psql`.

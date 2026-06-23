@@ -3,9 +3,10 @@
 Gatebase has three runtime parts: broker, proxy, and SQLite metadata store.
 
 ```text
-configured access signals satisfied
-  -> broker validates request
-  -> broker creates session
+GitHub issue gets required labels
+  -> broker webhook validates issue signals
+  -> broker comments one-time access token and closes issue
+  -> client exchanges token for session
   -> client connects to proxy
   -> proxy validates token
   -> proxy applies policy
@@ -15,7 +16,7 @@ configured access signals satisfied
 
 ## Broker
 
-Broker owns access-signal evaluation, CLI approval creation, GitHub integration, and session issuance. It exposes health endpoints, webhook endpoint, session API, and access approval API.
+Broker owns issue access-signal evaluation, GitHub integration, one-time access tokens, and session issuance. It exposes health endpoints, webhook endpoint, and session API.
 
 ## Proxy
 
@@ -25,7 +26,7 @@ Postgres extended query protocol, TLS, CancelRequest, and native MySQL password-
 
 ## SQLite
 
-SQLite stores sessions, active connections, CLI approval records, and audit events. Use WAL mode and back up the database like other security records.
+SQLite stores access tokens, sessions, active connections, and audit events. Use WAL mode and back up the database like other security records.
 
 ## Trust Boundary
 

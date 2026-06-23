@@ -124,10 +124,11 @@ pub(crate) async fn write_err(
 
 pub(crate) async fn write_result_set(
     stream: &mut TcpStream,
+    start_sequence: u8,
     columns: Arc<[mysql_async::Column]>,
     rows: Vec<Row>,
 ) -> Result<()> {
-    let mut sequence = 1_u8;
+    let mut sequence = start_sequence;
     let mut count = Vec::new();
     put_lenenc_int(&mut count, columns.len() as u64);
     write_packet(stream, sequence, &count).await?;

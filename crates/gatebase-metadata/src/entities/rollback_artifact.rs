@@ -1,19 +1,22 @@
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
-#[sea_orm(table_name = "sessions")]
+#[sea_orm(table_name = "rollback_artifacts")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
+    pub session_id: String,
     pub actor: String,
-    pub source_type: String,
-    pub github_repo: Option<String>,
-    pub issue: Option<i64>,
     pub target: String,
-    pub scopes: String,
+    pub engine: String,
+    pub statement: String,
+    pub table_name: Option<String>,
+    pub primary_key_column: Option<String>,
+    pub before_rows: String,
+    pub inverse_sql: Option<String>,
+    pub manual_required: bool,
+    pub reason: Option<String>,
     pub created_at: String,
-    pub expires_at: String,
-    pub revoked_at: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

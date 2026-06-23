@@ -3,6 +3,7 @@ mod load;
 mod model;
 
 pub use model::{
-    AccessConfig, AuditConfig, AuditSinkConfig, Config, CredentialsConfig, GitHubConfig,
-    MetadataConfig, PolicyConfig, ServerConfig, SessionsConfig, TargetConfig,
+    AuditConfig, AuditSinkConfig, Config, CredentialsConfig, GitHubConfig,
+    MetadataConfig, PolicyConfig, RetentionConfig, RollbackConfig, RollbackSinkConfig,
+    ServerConfig, SessionsConfig, TargetAccessConfig, TargetConfig,
 };

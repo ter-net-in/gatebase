@@ -1,5 +1,6 @@
-mod access;
+mod audit;
 mod config;
+mod maintenance;
 mod proxy;
 mod session;
 
@@ -14,6 +15,7 @@ pub(crate) async fn dispatch(cli: Cli) -> Result<()> {
         Command::Proxy { command } => proxy::run(command).await,
         Command::Config { command } => config::run(command).await,
         Command::Session { command } => session::run(command).await,
-        Command::Access { command } => access::run(command).await,
+        Command::Audit { command } => audit::run(command).await,
+        Command::Maintenance { command } => maintenance::run(command).await,
     }
 }

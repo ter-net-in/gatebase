@@ -2,15 +2,13 @@ use crate::cli::SessionCommand;
 use anyhow::{Context, Result};
 use gatebase_config::Config;
 use gatebase_core::SessionId;
-use gatebase_session::SessionStore;
+use gatebase_session::{new_session, SessionIssuer, SessionStore};
+use std::fs;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
 struct CreateSessionRequest {
-    actor: String,
-    repo: String,
-    pull_request: Option<i64>,
-    target: String,
+    token: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -24,32 +22,79 @@ pub(crate) async fn run(command: SessionCommand) -> Result<()> {
     match command {
         SessionCommand::Create {
             broker,
-            actor,
-            repo,
-            pull_request,
+            token,
+        } => create(broker, token).await,
+        SessionCommand::CreateLocal {
+            config,
             target,
-        } => create(broker, actor, repo, pull_request, target).await,
+            actor,
+        } => create_local(config, target, actor).await,
         SessionCommand::List { config } => list(config).await,
         SessionCommand::Revoke { config, id } => revoke(config, id).await,
     }
 }
 
-async fn create(
-    broker: String,
-    actor: String,
-    repo: String,
-    pull_request: Option<i64>,
-    target: String,
-) -> Result<()> {
+async fn create_local(config: std::path::PathBuf, target_name: String, actor: String) -> Result<()> {
+    let config = Config::load(config)?;
+    let target = config
+        .targets
+        .iter()
+        .find(|target| target.name == target_name)
+        .ok_or_else(|| anyhow::anyhow!("unknown target {target_name}"))?;
+    anyhow::ensure!(
+        target.access.allow_cli_sessions,
+        "target {} does not allow local CLI sessions",
+        target.name
+    );
+    let store = SessionStore::open(&config.metadata.sqlite_path).await?;
+    let signing_secret = fs::read(&config.sessions.signing_key_file)?;
+    let issuer = SessionIssuer::new(&signing_secret);
+    let session = new_session(
+        actor,
+        "cli".to_owned(),
+        None,
+        None,
+        target.name.clone(),
+        15,
+    );
+    store.create(&session).await?;
+    let token = issuer.issue(&session)?;
+    let host = target
+        .public_host
+        .as_deref()
+        .map(str::to_owned)
+        .or_else(|| public_url_host(&config.server.public_url))
+        .unwrap_or_else(|| target.listen.ip().to_string());
+    let port = target.public_port.unwrap_or_else(|| target.listen.port());
+    let scheme = match target.engine {
+        gatebase_core::DbEngine::Postgres => "postgresql",
+        gatebase_core::DbEngine::Mysql => "mysql",
+    };
+    println!("session_id {}", session.id);
+    println!("expires_at {}", session.expires_at.to_rfc3339());
+    println!(
+        "connection_string {scheme}://{}:{}@{}:{}/{}",
+        session.actor, token, host, port, target.database
+    );
+    Ok(())
+}
+
+fn public_url_host(public_url: &str) -> Option<String> {
+    let without_scheme = public_url.split_once("://")?.1;
+    let authority = without_scheme.split('/').next()?.split('@').next_back()?;
+    let host = if let Some(rest) = authority.strip_prefix('[') {
+        rest.split_once(']')?.0
+    } else {
+        authority.split(':').next()?
+    };
+    (!host.is_empty()).then(|| host.to_owned())
+}
+
+async fn create(broker: String, token: String) -> Result<()> {
     let response: CreateSessionResponse = post_json(
         &broker,
         "/api/sessions",
-        &CreateSessionRequest {
-            actor,
-            repo,
-            pull_request,
-            target,
-        },
+        &CreateSessionRequest { token },
     )
     .await?;
     println!("session_id {}", response.session_id);
@@ -66,10 +111,10 @@ async fn list(config: std::path::PathBuf) -> Result<()> {
             "{}\t{}\t{}\t{}\t{}\t{}",
             session.id,
             session.actor,
-            session.github_repo,
+            session.github_repo.as_deref().unwrap_or("-"),
             session
-                .pull_request
-                .map(|pull_request| pull_request.to_string())
+                .issue
+                .map(|issue| issue.to_string())
                 .unwrap_or_else(|| "-".to_owned()),
             session.target,
             if session.is_active(chrono::Utc::now()) {

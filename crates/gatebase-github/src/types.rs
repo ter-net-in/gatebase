@@ -1,8 +1,7 @@
 #[derive(Debug, Clone)]
 pub struct AccessRequest {
-    pub actor: String,
-    pub repo: String,
-    pub pull_request: Option<i64>,
+    pub github_repo: String,
+    pub issue: i64,
     pub target: String,
 }
 

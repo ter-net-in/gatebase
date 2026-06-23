@@ -50,3 +50,9 @@ impl Display for AuditEventId {
         f.write_str(&self.0)
     }
 }
+
+impl From<String> for AuditEventId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}

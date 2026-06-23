@@ -9,13 +9,11 @@ Implemented:
 - Rust workspace with separated crates.
 - Apache-2.0 license.
 - SQLite-backed session and audit foundations.
-- CLI commands for broker, Postgres proxy, MySQL proxy, config check, sessions, and broker-owned access approvals.
+- CLI commands for broker, Postgres proxy, MySQL proxy, config check, token-backed sessions, and local config-allowed sessions.
 - Broker HTTP skeleton.
 - GitHub provider trait and GitHub App implementation.
-- Broker-configurable access signal policy for allowed repositories, PR state, approvals, checks, labels, CODEOWNERS, manual approval hooks, and persisted CLI approvals.
-- CLI approvals are created through the broker API with `gatebase access approve --broker http://127.0.0.1:8080 ...`.
-- CLI approvals can satisfy no-PR access only when the `cli_approval` signal sets `allow_without_pull_request: true`.
-- GitHub App provider creates RS256 App JWTs, fetches installation tokens, verifies webhook HMAC signatures, and evaluates configured PR-open, PR-approval, labels, checks, and CODEOWNERS-style reviewer signals through GitHub REST.
+- Target-owned access signal policy for GitHub issues and optional `allow_cli_sessions`.
+- GitHub App provider creates RS256 App JWTs, fetches installation tokens, verifies webhook HMAC signatures, evaluates issue-open/label signals, comments one-time tokens, and closes approved issues.
 - Mocked GitHub API tests cover configured GitHub access signals and denial paths.
 - Policy engine with multi-statement detection, high-risk Postgres/MySQL operation blocks, `WHERE` requirements, and decision tests.
 - Postgres simple-query proxy with session auth, upstream forwarding, policy, audit, and TTL/revocation checks.
@@ -31,9 +29,8 @@ Implemented:
 
 Not implemented yet:
 
-- Exact CODEOWNERS ownership parsing and team membership expansion.
 - GitHub installation-token caching.
-- Richer lifecycle controls for CLI approvals, including listing, revocation, and audit events.
+- Richer lifecycle controls for issue access tokens, including listing, revocation, and audit events.
 - Extended Postgres wire protocol.
 - Native MySQL password-plugin token auth; current MVP requires clear-password auth support.
 - Session disconnect audit reasons and cleaner upstream cancellation for long-running queries.
@@ -94,27 +91,27 @@ Acceptance criteria:
 
 ## Phase 3: GitHub App Integration
 
-Goal: only approved GitHub pull requests can create sessions.
+Goal: approved GitHub issues produce short-lived one-time tokens that can create sessions.
 
 Tasks:
 
 - Verify GitHub webhook signatures.
 - Implement GitHub App JWT creation.
 - Fetch installation token.
-- Validate PR exists.
-- Validate PR approval state.
-- Validate CODEOWNERS-required reviews where possible.
-- Validate PR is not closed unless policy allows merged-only flows.
-- Add configurable allowed repositories.
-- Add configurable required labels.
-- Add PR comment with generated connection details if enabled.
+- Infer target from webhook repository.
+- Validate issue exists and is open.
+- Validate required issue labels.
+- Comment one-time token on approved issue.
+- Close issue after token comment.
+- Consume token through `POST /api/sessions`.
 
 Acceptance criteria:
 
-- Unapproved PR cannot create session.
-- Approved PR can create session.
+- Unapproved issue does not get a token.
+- Approved issue gets a one-time token.
+- Consumed token creates a session.
 - Invalid webhook signature is rejected.
-- Unknown repo is rejected.
+- Unknown repo is ignored or logged.
 
 ## Phase 4: Audit Hardening
 
@@ -123,7 +120,7 @@ Goal: make audit useful for security review and incident response.
 Tasks:
 
 - Record real actor from validated session token.
-- Record session ID, PR, repo, target, engine, client IP, and timestamp.
+- Record session ID, issue, repo, target, engine, client IP, and timestamp.
 - Record statement decision: `allowed` or `blocked`.
 - Record policy reason for blocked statements.
 - Record rows affected from Postgres `CommandComplete`.
@@ -136,7 +133,7 @@ Tasks:
 Acceptance criteria:
 
 - Every allowed and blocked SQL statement creates an audit event.
-- Audit events contain actor, PR, target, SQL, decision, and timestamp.
+- Audit events contain actor, target, SQL, decision, and timestamp.
 - Tokens and upstream passwords never appear in logs or audit events.
 
 ## Phase 5: Policy Engine V1

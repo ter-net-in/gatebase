@@ -1,21 +1,20 @@
 use crate::entities;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use gatebase_core::{AccessApproval, ActiveConnection, Session, SessionId};
+use gatebase_core::{AccessToken, ActiveConnection, AuditEvent, AuditEventId, Decision, Session, SessionId};
+use std::str::FromStr;
 
-pub(crate) fn model_to_access_approval(
-    model: entities::access_approval::Model,
-) -> Result<AccessApproval> {
-    Ok(AccessApproval {
+pub(crate) fn model_to_access_token(model: entities::access_token::Model) -> Result<AccessToken> {
+    Ok(AccessToken {
         id: model.id,
-        repo: model.repo,
-        pull_request: model.pull_request,
-        target: model.target,
+        token_hash: model.token_hash,
         actor: model.actor,
-        approver: model.approver,
-        reason: model.reason,
+        github_repo: model.github_repo,
+        issue: model.issue,
+        target: model.target,
         created_at: parse_time(&model.created_at)?,
-        expires_at: model.expires_at.as_deref().map(parse_time).transpose()?,
+        expires_at: parse_time(&model.expires_at)?,
+        used_at: model.used_at.as_deref().map(parse_time).transpose()?,
     })
 }
 
@@ -40,13 +39,33 @@ pub(crate) fn model_to_session(model: entities::session::Model) -> Result<Sessio
     Ok(Session {
         id: SessionId::from(model.id),
         actor: model.actor,
+        source_type: model.source_type,
         github_repo: model.github_repo,
-        pull_request: model.pull_request,
+        issue: model.issue,
         target: model.target,
         scopes: serde_json::from_str(&model.scopes)?,
         created_at: parse_time(&model.created_at)?,
         expires_at: parse_time(&model.expires_at)?,
         revoked_at: model.revoked_at.as_deref().map(parse_time).transpose()?,
+    })
+}
+
+pub(crate) fn model_to_audit_event(model: entities::audit_event::Model) -> Result<AuditEvent> {
+    Ok(AuditEvent {
+        id: AuditEventId::from(model.id),
+        session_id: SessionId::from(model.session_id),
+        actor: model.actor,
+        target: model.target,
+        engine: FromStr::from_str(&model.engine)?,
+        statement: model.statement,
+        decision: match model.decision.as_str() {
+            "allowed" => Decision::Allowed,
+            "blocked" => Decision::Blocked,
+            other => anyhow::bail!("unknown audit decision {other}"),
+        },
+        rows_affected: model.rows_affected,
+        error: model.error,
+        created_at: parse_time(&model.created_at)?,
     })
 }
 

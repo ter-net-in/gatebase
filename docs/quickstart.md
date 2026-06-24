@@ -14,6 +14,12 @@ Check config:
 cargo run -p gatebase-cli -- config check --config examples/gatebase.yaml
 ```
 
+Save a default broker URL for remote CLI commands:
+
+```bash
+cargo run -p gatebase-cli -- config --broker http://127.0.0.1:8080
+```
+
 Run broker:
 
 ```bash
@@ -45,8 +51,17 @@ Create a session through the broker from a GitHub issue token:
 
 ```bash
 cargo run -p gatebase-cli -- session create \
-  --broker http://127.0.0.1:8080 \
   --token gb_at_...
+```
+
+Bootstrap the first admin user locally:
+
+```bash
+printf 'change-me\n' | cargo run -p gatebase-cli -- admin user create \
+  --config examples/gatebase.yaml \
+  --username root \
+  --role admin \
+  --password-stdin
 ```
 
 Run Docker-backed E2E tests explicitly:

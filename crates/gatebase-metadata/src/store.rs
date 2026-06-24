@@ -1,11 +1,12 @@
 use crate::entities;
 use crate::mapping::{
     model_to_access_token, model_to_active_connection, model_to_audit_event, model_to_session,
+    model_to_user,
 };
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use gatebase_core::{
-    AccessToken, ActiveConnection, AuditEvent, RollbackArtifact, Session, SessionId,
+    AccessToken, ActiveConnection, AuditEvent, RollbackArtifact, Session, SessionId, User,
 };
 use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ColumnTrait, ConnectionTrait, Database, DatabaseConnection,
@@ -93,7 +94,45 @@ impl MetadataStore {
         self.create_table(entities::active_connection::Entity)
             .await?;
         self.create_table(entities::access_token::Entity).await?;
+        self.create_table(entities::user::Entity).await?;
         Ok(())
+    }
+
+    pub async fn create_user(&self, user: &User) -> Result<()> {
+        entities::user::ActiveModel {
+            id: Set(user.id.clone()),
+            username: Set(user.username.clone()),
+            password_hash: Set(user.password_hash.clone()),
+            role: Set(user.role.to_string()),
+            created_at: Set(user.created_at.to_rfc3339()),
+            disabled_at: Set(user.disabled_at.map(|time| time.to_rfc3339())),
+        }
+        .insert(&self.db)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn find_user_by_username(&self, username: &str) -> Result<Option<User>> {
+        entities::user::Entity::find()
+            .filter(entities::user::Column::Username.eq(username))
+            .one(&self.db)
+            .await?
+            .map(model_to_user)
+            .transpose()
+    }
+
+    pub async fn list_users(&self) -> Result<Vec<User>> {
+        entities::user::Entity::find()
+            .order_by_asc(entities::user::Column::Username)
+            .all(&self.db)
+            .await?
+            .into_iter()
+            .map(model_to_user)
+            .collect()
+    }
+
+    pub async fn count_users(&self) -> Result<u64> {
+        Ok(entities::user::Entity::find().count(&self.db).await?)
     }
 
     pub async fn create_access_token(&self, token: &AccessToken) -> Result<()> {

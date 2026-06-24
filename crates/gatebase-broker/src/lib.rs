@@ -1,3 +1,4 @@
+mod auth;
 mod dto;
 mod handlers;
 mod routes;

@@ -106,6 +106,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
+name = "argon2"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c3610892ee6e0cbce8ae2700349fcf8f98adb0dbfbee85aec3c9179d29cc072"
+dependencies = [
+ "base64ct",
+ "blake2",
+ "cpufeatures 0.2.17",
+ "password-hash",
+]
+
+[[package]]
 name = "arrayvec"
 version = "0.7.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -265,6 +277,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
+name = "base64ct"
+version = "1.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
+
+[[package]]
 name = "bigdecimal"
 version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -311,6 +329,15 @@ dependencies = [
  "radium",
  "tap",
  "wyz",
+]
+
+[[package]]
+name = "blake2"
+version = "0.10.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "46502ad458c9a52b69d4d4d32775c788b7a1b85e8bc9d482d92250fc0e3f8efe"
+dependencies = [
+ "digest 0.10.7",
 ]
 
 [[package]]
@@ -1067,7 +1094,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-audit"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1079,7 +1106,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-broker"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -1088,6 +1115,7 @@ dependencies = [
  "gatebase-core",
  "gatebase-github",
  "gatebase-session",
+ "jsonwebtoken",
  "serde",
  "serde_json",
  "tokio",
@@ -1097,7 +1125,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1119,7 +1147,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-config"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "gatebase-core",
@@ -1129,7 +1157,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "serde",
@@ -1140,7 +1168,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-github"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1159,7 +1187,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-metadata"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1171,7 +1199,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-policy"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "gatebase-config",
  "gatebase-core",
@@ -1180,7 +1208,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-proxy-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "gatebase-config",
@@ -1191,7 +1219,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-proxy-mysql"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1210,7 +1238,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-proxy-postgres"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1229,13 +1257,15 @@ dependencies = [
 
 [[package]]
 name = "gatebase-session"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
+ "argon2",
  "chrono",
  "gatebase-core",
  "gatebase-metadata",
  "jsonwebtoken",
+ "rand_core 0.6.4",
  "serde",
  "sha2 0.10.9",
  "thiserror 1.0.69",
@@ -2126,6 +2156,17 @@ dependencies = [
  "redox_syscall",
  "smallvec",
  "windows-link",
+]
+
+[[package]]
+name = "password-hash"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "346f04948ba92c43e8469c1ee6736c7563d71012b17d40745260fe106aac2166"
+dependencies = [
+ "base64ct",
+ "rand_core 0.6.4",
+ "subtle",
 ]
 
 [[package]]

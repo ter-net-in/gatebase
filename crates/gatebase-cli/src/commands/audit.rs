@@ -1,4 +1,5 @@
 use crate::cli::AuditCommand;
+use crate::settings;
 use anyhow::{Context, Result};
 use gatebase_config::Config;
 use gatebase_session::{AuditEventFilter, SessionStore};
@@ -19,47 +20,64 @@ struct AuditEventOutput {
     created_at: String,
 }
 
-pub(crate) async fn run(command: AuditCommand) -> Result<()> {
-    match command {
-        AuditCommand::List {
-            config,
-            broker,
-            actor,
-            target,
-            decision,
-            limit,
-            json,
-        } => list(config, broker, actor, target, decision, limit, json).await,
-    }
-}
-
-async fn list(
+struct AuditListArgs {
     config: Option<PathBuf>,
     broker: Option<String>,
+    admin_token: Option<String>,
     actor: Option<String>,
     target: Option<String>,
     decision: Option<String>,
     limit: u64,
     json: bool,
-) -> Result<()> {
-    anyhow::ensure!(
-        config.is_some() ^ broker.is_some(),
-        "provide exactly one of --config or --broker"
-    );
-    validate_decision(decision.as_deref())?;
-    let events = if let Some(config) = config {
-        list_from_config(config, actor, target, decision, limit).await?
-    } else {
-        list_from_broker(
-            broker.expect("checked above"),
+}
+
+pub(crate) async fn run(command: AuditCommand) -> Result<()> {
+    match command {
+        AuditCommand::List {
+            config,
+            broker,
+            admin_token,
             actor,
             target,
             decision,
             limit,
+            json,
+        } => {
+            list(AuditListArgs {
+                config,
+                broker,
+                admin_token,
+                actor,
+                target,
+                decision,
+                limit,
+                json,
+            })
+            .await
+        }
+    }
+}
+
+async fn list(args: AuditListArgs) -> Result<()> {
+    validate_decision(args.decision.as_deref())?;
+    let events = if let Some(config) = args.config {
+        anyhow::ensure!(
+            args.broker.is_none(),
+            "provide exactly one of --config or --broker"
+        );
+        list_from_config(config, args.actor, args.target, args.decision, args.limit).await?
+    } else {
+        list_from_broker(
+            settings::broker(args.broker)?,
+            args.admin_token.context("provide --admin-token")?,
+            args.actor,
+            args.target,
+            args.decision,
+            args.limit,
         )
         .await?
     };
-    if json {
+    if args.json {
         println!("{}", serde_json::to_string_pretty(&events)?);
     } else {
         print_table(&events);
@@ -102,6 +120,7 @@ async fn list_from_config(
 
 async fn list_from_broker(
     broker: String,
+    admin_token: String,
     actor: Option<String>,
     target: Option<String>,
     decision: Option<String>,
@@ -127,6 +146,7 @@ async fn list_from_broker(
     }
     let response = reqwest::Client::new()
         .get(url)
+        .bearer_auth(admin_token)
         .send()
         .await
         .with_context(|| format!("failed to connect to broker {broker}"))?;

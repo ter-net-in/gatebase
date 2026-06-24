@@ -1,6 +1,8 @@
+use crate::auth::{issue_admin_token, require_role};
 use crate::dto::{
-    AuditEventResponse, AuditQuery, CreateSessionRequest, CreateSessionResponse,
-    GitHubWebhookPayload, SessionResponse,
+    AdminLoginRequest, AdminLoginResponse, AdminMeResponse, AuditEventResponse, AuditQuery,
+    CreateSessionRequest, CreateSessionResponse, CreateUserRequest, GitHubWebhookPayload,
+    SessionResponse, UserResponse,
 };
 use crate::state::AppState;
 use axum::body::Bytes;
@@ -9,15 +11,18 @@ use axum::http::HeaderMap;
 use axum::http::StatusCode;
 use axum::Json;
 use chrono::{Duration, Utc};
-use gatebase_core::{AccessToken, SessionId};
+use gatebase_core::{AccessToken, SessionId, User, UserRole};
 use gatebase_github::{verify_webhook_signature, AccessRequest, GitProvider};
-use gatebase_session::{hash_access_token, new_session, AuditEventFilter};
+use gatebase_session::{hash_access_token, new_session, verify_password, AuditEventFilter};
+use std::str::FromStr;
 use std::sync::Arc;
 use uuid::Uuid;
 
 pub(crate) async fn list_sessions(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
 ) -> Result<Json<Vec<SessionResponse>>, String> {
+    require_role(&state, &headers, UserRole::Viewer).map_err(status_message)?;
     let sessions = state
         .store
         .list()
@@ -39,8 +44,10 @@ pub(crate) async fn list_sessions(
 
 pub(crate) async fn list_audit_events(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Query(query): Query<AuditQuery>,
 ) -> Result<Json<Vec<AuditEventResponse>>, String> {
+    require_role(&state, &headers, UserRole::Viewer).map_err(status_message)?;
     let events = state
         .store
         .list_audit_events(AuditEventFilter {
@@ -70,8 +77,10 @@ pub(crate) async fn list_audit_events(
 
 pub(crate) async fn revoke_session(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<StatusCode, String> {
+    require_role(&state, &headers, UserRole::Operator).map_err(status_message)?;
     state
         .store
         .revoke(&SessionId::from(id))
@@ -82,6 +91,72 @@ pub(crate) async fn revoke_session(
 
 pub(crate) async fn healthz() -> &'static str {
     "ok"
+}
+
+pub(crate) async fn admin_login(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<AdminLoginRequest>,
+) -> Result<Json<AdminLoginResponse>, String> {
+    let user = state
+        .store
+        .find_user_by_username(&request.username)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "invalid username or password".to_owned())?;
+    if user.disabled_at.is_some()
+        || !verify_password(&request.password, &user.password_hash)
+            .map_err(|error| error.to_string())?
+    {
+        return Err("invalid username or password".to_owned());
+    }
+    let token = issue_admin_token(&state, user.id, user.username.clone(), user.role)?;
+    Ok(Json(AdminLoginResponse {
+        token,
+        username: user.username,
+        role: user.role.to_string(),
+    }))
+}
+
+pub(crate) async fn admin_me(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<AdminMeResponse>, StatusCode> {
+    let auth = require_role(&state, &headers, UserRole::Viewer)?;
+    Ok(Json(AdminMeResponse {
+        username: auth.username,
+        role: auth.role.to_string(),
+    }))
+}
+
+pub(crate) async fn list_users(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<UserResponse>>, String> {
+    require_role(&state, &headers, UserRole::Admin).map_err(status_message)?;
+    let users = state
+        .store
+        .list_users()
+        .await
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(user_response)
+        .collect();
+    Ok(Json(users))
+}
+
+pub(crate) async fn create_user(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<CreateUserRequest>,
+) -> Result<Json<UserResponse>, String> {
+    require_role(&state, &headers, UserRole::Admin).map_err(status_message)?;
+    let role = UserRole::from_str(&request.role)?;
+    let user = state
+        .store
+        .create_user(request.username, &request.password, role)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(Json(user_response(user)))
 }
 
 pub(crate) async fn github_webhook(
@@ -281,6 +356,20 @@ fn parse_minutes(value: &str) -> Result<i64, String> {
         .unwrap_or(value)
         .parse::<i64>()
         .map_err(|_| format!("invalid minute duration {value}"))
+}
+
+fn user_response(user: User) -> UserResponse {
+    UserResponse {
+        id: user.id,
+        username: user.username,
+        role: user.role.to_string(),
+        created_at: user.created_at.to_rfc3339(),
+        disabled_at: user.disabled_at.map(|time| time.to_rfc3339()),
+    }
+}
+
+fn status_message(status: StatusCode) -> String {
+    status.to_string()
 }
 
 #[cfg(test)]

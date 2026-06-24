@@ -12,7 +12,7 @@ Most commands take either `--config <path>` or `--broker <url>`:
 | Input | Used by | Meaning |
 | --- | --- | --- |
 | `--config <path>` | Runtime and local metadata commands | Load Gatebase YAML, target settings, session signing key path, and SQLite metadata path. |
-| `--broker <url>` | Broker API commands | Send HTTP requests to a running broker. Defaults to `http://127.0.0.1:8080` where supported. |
+| `--broker <url>` | Broker API commands | Send HTTP requests to a running broker. If omitted, commands use the URL saved by `gatebase config --broker <url>` where supported. `session create` falls back to `http://127.0.0.1:8080`. |
 
 Set `RUST_LOG` to control CLI and service logging, for example
 `RUST_LOG=info gatebase broker --config examples/gatebase.yaml`.
@@ -88,6 +88,22 @@ Successful output:
 config ok
 ```
 
+## `gatebase config --broker`
+
+Stores a default broker URL for remote CLI commands. The setting is written to
+`~/.config/gatebase/config.json` and does not modify Gatebase YAML.
+
+```bash
+gatebase config --broker https://gatebase.example.com
+```
+
+Successful output:
+
+```text
+broker https://gatebase.example.com
+saved <settings-path>
+```
+
 ## `gatebase session create`
 
 Consumes a one-time access token from a GitHub issue approval. On success it
@@ -95,13 +111,12 @@ returns a connection string for a normal database client.
 
 ```bash
 gatebase session create \
-  --broker http://127.0.0.1:8080 \
   --token gb_at_...
 ```
 
 | Flag | Required | Description |
 | --- | --- | --- |
-| `--broker <url>` | No | Broker base URL. Defaults to `http://127.0.0.1:8080`. |
+| `--broker <url>` | No | Broker base URL. Defaults to saved broker URL, then `http://127.0.0.1:8080`. |
 | `--token <token>` | Yes | One-time token posted by Gatebase on an approved GitHub issue. |
 
 Successful output:
@@ -177,18 +192,19 @@ The `expires_at` line appears when the broker returns an expiration timestamp.
 ## `gatebase audit list`
 
 Lists audit events. Use `--broker` from a laptop against a running broker, or
-`--config` on the server to read SQLite directly. Exactly one of `--broker` or
-`--config` is required.
+`--config` on the server to read SQLite directly. If neither flag is passed, the
+saved broker URL is used.
 
 ```bash
-gatebase audit list --broker https://gatebase.example.com --target prod-pg --limit 100
+gatebase audit list --broker https://gatebase.example.com --admin-token <token> --target prod-pg --limit 100
 gatebase audit list --config /etc/gatebase/gatebase.yaml --decision blocked --json
 ```
 
 | Flag | Required | Description |
 | --- | --- | --- |
-| `--broker <url>` | One of broker/config | Broker base URL for remote API mode. |
-| `--config <path>` | One of broker/config | Path to Gatebase YAML config for local SQLite mode. |
+| `--broker <url>` | No | Broker base URL for remote API mode. Defaults to saved broker URL. |
+| `--config <path>` | No | Path to Gatebase YAML config for local SQLite mode. Cannot be combined with `--broker`. |
+| `--admin-token <token>` | Remote mode | Bearer token from `gatebase admin login`. |
 | `--actor <name>` | No | Filter by actor. |
 | `--target <name>` | No | Filter by target. |
 | `--decision <allowed|blocked>` | No | Filter by policy decision. |
@@ -230,3 +246,76 @@ would_prune total <count>
 ```
 
 Without `--dry-run`, the prefix is `pruned`.
+
+## `gatebase admin login`
+
+Logs into the broker admin API and prints a bearer token. Store the token in a
+password manager or shell variable for subsequent admin commands.
+
+```bash
+printf 'admin-password\n' | gatebase admin login \
+  --broker https://gatebase.example.com \
+  --username root \
+  --password-stdin
+```
+
+`--broker` defaults to the URL saved by `gatebase config --broker <url>`.
+
+Output:
+
+```text
+username <username>
+role <role>
+token <bearer-token>
+```
+
+## `gatebase admin user create`
+
+Creates a broker admin user. Roles are `viewer`, `operator`, and `admin`.
+
+Bootstrap the first admin locally on the broker host:
+
+```bash
+printf 'admin-password\n' | gatebase admin user create \
+  --config /etc/gatebase/gatebase.yaml \
+  --username root \
+  --role admin \
+  --password-stdin
+```
+
+Create later users remotely:
+
+```bash
+printf 'new-user-password\n' | gatebase admin user create \
+  --broker https://gatebase.example.com \
+  --admin-token <token> \
+  --username alice \
+  --role viewer \
+  --password-stdin
+```
+
+Create later users locally with admin verification. Stdin contains the existing
+admin password, newline, then the new user's password:
+
+```bash
+printf 'admin-password\nnew-user-password\n' | gatebase admin user create \
+  --config /etc/gatebase/gatebase.yaml \
+  --admin-username root \
+  --admin-password-stdin \
+  --username alice \
+  --role viewer \
+  --password-stdin
+```
+
+## `gatebase admin user list`
+
+Lists admin users. Remote mode requires an admin token. Local mode requires admin
+verification after bootstrap.
+
+```bash
+gatebase admin user list --broker https://gatebase.example.com --admin-token <token>
+printf 'admin-password\n' | gatebase admin user list \
+  --config /etc/gatebase/gatebase.yaml \
+  --admin-username root \
+  --admin-password-stdin
+```

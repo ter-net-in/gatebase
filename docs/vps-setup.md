@@ -271,6 +271,16 @@ Validate:
 sudo -u gatebase /usr/local/bin/gatebase config check --config /etc/gatebase/gatebase.yaml
 ```
 
+Bootstrap the first admin user locally. Replace `change-me` before production use:
+
+```bash
+printf 'change-me\n' | sudo -u gatebase /usr/local/bin/gatebase admin user create \
+  --config /etc/gatebase/gatebase.yaml \
+  --username root \
+  --role admin \
+  --password-stdin
+```
+
 ## systemd Units
 
 Broker unit `/etc/systemd/system/gatebase-broker.service`:
@@ -394,6 +404,9 @@ Set GitHub webhook URL to:
 https://gatebase.example.com/webhooks/github
 ```
 
+Protected broker endpoints require `Authorization: Bearer <token>`. Get a token
+with `gatebase admin login` after the broker is running.
+
 ## Firewall
 
 Minimum public exposure:
@@ -435,5 +448,17 @@ curl -sS https://gatebase.example.com/api/sessions \
 ```
 
 Use returned connection string with `psql`.
+
+Authenticate to protected admin endpoints:
+
+```bash
+TOKEN=$(printf 'admin-password\n' | gatebase admin login \
+  --broker https://gatebase.example.com \
+  --username root \
+  --password-stdin | awk '/^token / {print $2}')
+
+curl -sS https://gatebase.example.com/api/audit/events \
+  -H "Authorization: Bearer $TOKEN"
+```
 
 Blocked SQL should fail at the proxy and create audit events.

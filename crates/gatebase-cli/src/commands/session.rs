@@ -1,4 +1,5 @@
 use crate::cli::SessionCommand;
+use crate::settings;
 use anyhow::{Context, Result};
 use gatebase_config::Config;
 use gatebase_core::SessionId;
@@ -84,7 +85,8 @@ fn public_url_host(public_url: &str) -> Option<String> {
     (!host.is_empty()).then(|| host.to_owned())
 }
 
-async fn create(broker: String, token: String) -> Result<()> {
+async fn create(broker: Option<String>, token: String) -> Result<()> {
+    let broker = settings::broker_or_localhost(broker)?;
     let response: CreateSessionResponse =
         post_json(&broker, "/api/sessions", &CreateSessionRequest { token }).await?;
     println!("session_id {}", response.session_id);

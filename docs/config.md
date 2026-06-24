@@ -6,6 +6,9 @@ Gatebase is configured with one YAML file. See
 parsed. Current validation requires at least one target and at least one audit
 sink.
 
+`gatebase config --broker <url>` writes CLI-only settings to
+`~/.config/gatebase/config.json`. It does not modify the Gatebase YAML file.
+
 ## Top-level sections
 
 | Section | Purpose |
@@ -44,7 +47,7 @@ server:
 ## `metadata`
 
 SQLite metadata store location. Gatebase stores sessions, access tokens,
-active connections, SQLite audit events, and rollback artifacts here.
+active connections, SQLite audit events, rollback artifacts, and admin users here.
 
 | Field | Required | Default | Description |
 | --- | --- | --- | --- |

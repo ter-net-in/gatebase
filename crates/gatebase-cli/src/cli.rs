@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
@@ -22,8 +22,8 @@ pub(crate) enum Command {
         command: ProxyCommand,
     },
     Config {
-        #[command(subcommand)]
-        command: ConfigCommand,
+        #[command(flatten)]
+        args: ConfigArgs,
     },
     Session {
         #[command(subcommand)]
@@ -36,6 +36,60 @@ pub(crate) enum Command {
     Maintenance {
         #[command(subcommand)]
         command: MaintenanceCommand,
+    },
+    Admin {
+        #[command(subcommand)]
+        command: AdminCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum AdminCommand {
+    Login {
+        #[arg(long)]
+        broker: Option<String>,
+        #[arg(long)]
+        username: String,
+        #[arg(long)]
+        password_stdin: bool,
+    },
+    User {
+        #[command(subcommand)]
+        command: AdminUserCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum AdminUserCommand {
+    Create {
+        #[arg(long, conflicts_with = "broker")]
+        config: Option<PathBuf>,
+        #[arg(long, conflicts_with = "config")]
+        broker: Option<String>,
+        #[arg(long)]
+        admin_token: Option<String>,
+        #[arg(long)]
+        admin_username: Option<String>,
+        #[arg(long)]
+        admin_password_stdin: bool,
+        #[arg(long)]
+        username: String,
+        #[arg(long)]
+        role: String,
+        #[arg(long)]
+        password_stdin: bool,
+    },
+    List {
+        #[arg(long, conflicts_with = "broker")]
+        config: Option<PathBuf>,
+        #[arg(long, conflicts_with = "config")]
+        broker: Option<String>,
+        #[arg(long)]
+        admin_token: Option<String>,
+        #[arg(long)]
+        admin_username: Option<String>,
+        #[arg(long)]
+        admin_password_stdin: bool,
     },
 }
 
@@ -59,11 +113,19 @@ pub(crate) enum ConfigCommand {
     },
 }
 
+#[derive(Debug, Args)]
+pub(crate) struct ConfigArgs {
+    #[arg(long)]
+    pub(crate) broker: Option<String>,
+    #[command(subcommand)]
+    pub(crate) command: Option<ConfigCommand>,
+}
+
 #[derive(Debug, Subcommand)]
 pub(crate) enum SessionCommand {
     Create {
-        #[arg(long, default_value = "http://127.0.0.1:8080")]
-        broker: String,
+        #[arg(long)]
+        broker: Option<String>,
         #[arg(long)]
         token: String,
     },
@@ -93,6 +155,8 @@ pub(crate) enum AuditCommand {
         config: Option<PathBuf>,
         #[arg(long)]
         broker: Option<String>,
+        #[arg(long)]
+        admin_token: Option<String>,
         #[arg(long)]
         actor: Option<String>,
         #[arg(long)]

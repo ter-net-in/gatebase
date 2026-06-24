@@ -5,6 +5,7 @@ use gatebase_config::Config;
 use gatebase_core::AccessSignal;
 use gatebase_github::{GitHubAppConfig, GitHubProvider};
 use gatebase_session::{SessionIssuer, SessionStore};
+use jsonwebtoken::{DecodingKey, EncodingKey};
 use std::fs;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -44,6 +45,8 @@ pub async fn run(config: Config) -> Result<()> {
         config: config.clone(),
         store,
         issuer: SessionIssuer::new(&signing_secret),
+        admin_encoding_key: EncodingKey::from_secret(&signing_secret),
+        admin_decoding_key: DecodingKey::from_secret(&signing_secret),
         github,
     });
 

@@ -7,6 +7,7 @@ mod error;
 mod ids;
 mod rollback;
 mod session;
+mod user;
 
 pub use access::{AccessSignal, AccessToken};
 pub use audit::AuditEvent;
@@ -17,3 +18,4 @@ pub use error::GatebaseError;
 pub use ids::{AuditEventId, SessionId};
 pub use rollback::RollbackArtifact;
 pub use session::Session;
+pub use user::{User, UserRole};

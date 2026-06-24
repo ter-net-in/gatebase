@@ -9,11 +9,13 @@ rust-version.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+argon2.workspace = true
 chrono.workspace = true
 gatebase-core = { path = "../gatebase-core" }
 gatebase-metadata = { path = "../gatebase-metadata" }
 jsonwebtoken.workspace = true
 serde.workspace = true
 sha2.workspace = true
+rand_core.workspace = true
 thiserror.workspace = true
 uuid.workspace = true

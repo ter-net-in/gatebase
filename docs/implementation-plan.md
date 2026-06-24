@@ -9,8 +9,9 @@ Implemented:
 - Rust workspace with separated crates.
 - Apache-2.0 license.
 - SQLite-backed session and audit foundations.
-- CLI commands for broker, Postgres proxy, MySQL proxy, config check, token-backed sessions, and local config-allowed sessions.
-- Broker HTTP skeleton.
+- CLI commands for broker, Postgres proxy, MySQL proxy, config check, saved default broker URL, token-backed sessions, local config-allowed sessions, and admin user management.
+- Broker HTTP API with public token exchange, GitHub webhook intake, admin login, admin user management, and RBAC-protected session/audit endpoints.
+- SQLite-backed admin users with Argon2 password hashes and `viewer`, `operator`, `admin` roles.
 - GitHub provider trait and GitHub App implementation.
 - Target-owned access signal policy for GitHub issues and optional `allow_cli_sessions`.
 - GitHub App provider creates RS256 App JWTs, fetches installation tokens, verifies webhook HMAC signatures, evaluates issue-open/label signals, comments one-time tokens, and closes approved issues.
@@ -31,6 +32,7 @@ Not implemented yet:
 
 - GitHub installation-token caching.
 - Richer lifecycle controls for issue access tokens, including listing, revocation, and audit events.
+- Admin user disable/password reset endpoints and admin action audit events.
 - Extended Postgres wire protocol.
 - Native MySQL password-plugin token auth; current MVP requires clear-password auth support.
 - Session disconnect audit reasons and cleaner upstream cancellation for long-running queries.

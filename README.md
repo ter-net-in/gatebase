@@ -48,6 +48,8 @@ every query is policy-checked and audited on the way through.
   connections when the session expires or is revoked.
 - **Audited.** Every allowed and blocked statement is written to SQLite and
   optional JSONL sinks, with actor, target, decision, and reason.
+- **Admin RBAC.** Broker admin APIs use SQLite-backed users with `viewer`,
+  `operator`, and `admin` roles.
 - **Policy enforcement.** High-risk SQL (`DROP`, `TRUNCATE`, `ALTER SYSTEM`,
   unscoped `UPDATE`/`DELETE`, and more) is blocked before it reaches the upstream.
 - **Normal client UX.** Clients connect with ordinary connection strings using
@@ -79,9 +81,9 @@ Gatebase has three runtime parts, all shipped in one binary:
 
 | Part | Responsibility |
 | --- | --- |
-| **Broker** | Evaluates issue access signals, comments one-time tokens, integrates with GitHub, issues sessions. Exposes the HTTP API. |
+| **Broker** | Evaluates issue access signals, comments one-time tokens, integrates with GitHub, issues sessions, and enforces admin API RBAC. Exposes the HTTP API. |
 | **Proxy** | Data-plane enforcement. Validates session tokens, applies SQL policy, writes audit events, forwards to the upstream database. |
-| **SQLite store** | Access tokens, sessions, active connections, and audit events. |
+| **SQLite store** | Access tokens, sessions, active connections, audit events, and admin users. |
 
 See [`docs/architecture.md`](docs/architecture.md) for more detail.
 
@@ -113,6 +115,9 @@ generates a session signing key into `./tmp`, and exposes:
 # Validate a config file
 cargo run -p gatebase-cli -- config check --config examples/gatebase.yaml
 
+# Save a default broker URL for remote CLI commands
+cargo run -p gatebase-cli -- config --broker http://127.0.0.1:8080
+
 # Start the broker
 cargo run -p gatebase-cli -- broker --config examples/gatebase.yaml
 
@@ -136,7 +141,6 @@ and closes it. A developer consumes that token:
 
 ```bash
 cargo run -p gatebase-cli -- session create \
-  --broker http://127.0.0.1:8080 \
   --token gb_at_...
 ```
 
@@ -151,6 +155,16 @@ cargo run -p gatebase-cli -- session create-local \
 
 Both commands print `session_id`, `expires_at`, and `connection_string`.
 
+Bootstrap the first admin user locally on the broker host:
+
+```bash
+printf 'change-me\n' | cargo run -p gatebase-cli -- admin user create \
+  --config examples/gatebase.yaml \
+  --username root \
+  --role admin \
+  --password-stdin
+```
+
 ## CLI reference
 
 See [`docs/cli.md`](docs/cli.md) for the full command reference, flags, outputs,
@@ -162,10 +176,14 @@ and examples.
 | --- | --- |
 | `GET /healthz` | Liveness check. |
 | `GET /readyz` | Readiness check. |
-| `GET /api/sessions` | List sessions. |
+| `GET /api/sessions` | List sessions. Requires `viewer` or higher. |
 | `POST /api/sessions` | Create a session. Body: `{token}`. Returns `{session_id, expires_at, connection_string}`. |
-| `POST /api/sessions/{id}/revoke` | Revoke a session. |
-| `GET /api/audit/events` | List audit events. Query params: `actor`, `target`, `decision`, `limit`. |
+| `POST /api/sessions/{id}/revoke` | Revoke a session. Requires `operator` or higher. |
+| `GET /api/audit/events` | List audit events. Query params: `actor`, `target`, `decision`, `limit`. Requires `viewer` or higher. |
+| `POST /api/admin/login` | Exchange username/password for an admin bearer token. |
+| `GET /api/admin/me` | Return authenticated admin user. Requires `viewer` or higher. |
+| `GET /api/admin/users` | List admin users. Requires `admin`. |
+| `POST /api/admin/users` | Create admin user. Requires `admin`. |
 | `POST /webhooks/github` | GitHub App webhook intake. Verifies the `X-Hub-Signature-256` HMAC; invalid signatures return `401`. |
 
 Example session request:

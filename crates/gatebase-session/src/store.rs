@@ -1,7 +1,12 @@
 use anyhow::Result;
+use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
+use argon2::Argon2;
 use chrono::Utc;
-use gatebase_core::{AccessToken, ActiveConnection, AuditEvent, Session, SessionId};
+use gatebase_core::{
+    AccessToken, ActiveConnection, AuditEvent, Session, SessionId, User, UserRole,
+};
 use gatebase_metadata::{AuditEventFilter, MetadataStore, PruneCutoffs, PruneResult};
+use rand_core::OsRng;
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
@@ -81,6 +86,36 @@ impl SessionStore {
         self.metadata.prune(cutoffs, dry_run).await
     }
 
+    pub async fn create_user(
+        &self,
+        username: String,
+        password: &str,
+        role: UserRole,
+    ) -> Result<User> {
+        let user = User {
+            id: format!("usr_{}", uuid::Uuid::new_v4().simple()),
+            username,
+            password_hash: hash_password(password)?,
+            role,
+            created_at: Utc::now(),
+            disabled_at: None,
+        };
+        self.metadata.create_user(&user).await?;
+        Ok(user)
+    }
+
+    pub async fn list_users(&self) -> Result<Vec<User>> {
+        self.metadata.list_users().await
+    }
+
+    pub async fn find_user_by_username(&self, username: &str) -> Result<Option<User>> {
+        self.metadata.find_user_by_username(username).await
+    }
+
+    pub async fn count_users(&self) -> Result<u64> {
+        self.metadata.count_users().await
+    }
+
     #[must_use]
     pub fn metadata(&self) -> &MetadataStore {
         &self.metadata
@@ -92,4 +127,21 @@ pub fn hash_access_token(token: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(token.as_bytes());
     format!("{:x}", hasher.finalize())
+}
+
+pub fn hash_password(password: &str) -> Result<String> {
+    let salt = SaltString::generate(&mut OsRng);
+    let hash = Argon2::default()
+        .hash_password(password.as_bytes(), &salt)
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?
+        .to_string();
+    Ok(hash)
+}
+
+pub fn verify_password(password: &str, password_hash: &str) -> Result<bool> {
+    let parsed_hash =
+        PasswordHash::new(password_hash).map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    Ok(Argon2::default()
+        .verify_password(password.as_bytes(), &parsed_hash)
+        .is_ok())
 }

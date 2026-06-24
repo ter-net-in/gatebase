@@ -3,3 +3,4 @@ pub mod active_connection;
 pub mod audit_event;
 pub mod rollback_artifact;
 pub mod session;
+pub mod user;

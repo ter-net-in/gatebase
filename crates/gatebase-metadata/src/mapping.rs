@@ -2,7 +2,8 @@ use crate::entities;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use gatebase_core::{
-    AccessToken, ActiveConnection, AuditEvent, AuditEventId, Decision, Session, SessionId,
+    AccessToken, ActiveConnection, AuditEvent, AuditEventId, Decision, Session, SessionId, User,
+    UserRole,
 };
 use std::str::FromStr;
 
@@ -68,6 +69,17 @@ pub(crate) fn model_to_audit_event(model: entities::audit_event::Model) -> Resul
         rows_affected: model.rows_affected,
         error: model.error,
         created_at: parse_time(&model.created_at)?,
+    })
+}
+
+pub(crate) fn model_to_user(model: entities::user::Model) -> Result<User> {
+    Ok(User {
+        id: model.id,
+        username: model.username,
+        password_hash: model.password_hash,
+        role: UserRole::from_str(&model.role).map_err(anyhow::Error::msg)?,
+        created_at: parse_time(&model.created_at)?,
+        disabled_at: model.disabled_at.as_deref().map(parse_time).transpose()?,
     })
 }
 

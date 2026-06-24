@@ -19,6 +19,17 @@ struct CreateSessionResponse {
     connection_string: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct SessionResponse {
+    session_id: String,
+    actor: String,
+    github_repo: String,
+    issue: Option<i64>,
+    target: String,
+    expires_at: String,
+    revoked_at: Option<String>,
+}
+
 pub(crate) async fn run(command: SessionCommand) -> Result<()> {
     match command {
         SessionCommand::Create { broker, token } => create(broker, token).await,
@@ -27,8 +38,17 @@ pub(crate) async fn run(command: SessionCommand) -> Result<()> {
             target,
             actor,
         } => create_local(config, target, actor).await,
-        SessionCommand::List { config } => list(config).await,
-        SessionCommand::Revoke { config, id } => revoke(config, id).await,
+        SessionCommand::List {
+            config,
+            broker,
+            admin_token,
+        } => list(config, broker, admin_token).await,
+        SessionCommand::Revoke {
+            config,
+            broker,
+            admin_token,
+            id,
+        } => revoke(config, broker, admin_token, id).await,
     }
 }
 
@@ -95,7 +115,23 @@ async fn create(broker: Option<String>, token: String) -> Result<()> {
     Ok(())
 }
 
-async fn list(config: std::path::PathBuf) -> Result<()> {
+async fn list(
+    config: Option<std::path::PathBuf>,
+    broker: Option<String>,
+    admin_token: Option<String>,
+) -> Result<()> {
+    if let Some(config) = config {
+        list_local(config).await
+    } else {
+        list_broker(
+            settings::broker(broker)?,
+            admin_token.context("provide --admin-token")?,
+        )
+        .await
+    }
+}
+
+async fn list_local(config: std::path::PathBuf) -> Result<()> {
     let config = Config::load(config)?;
     let store = SessionStore::open(&config.metadata.sqlite_path).await?;
     for session in store.list().await? {
@@ -119,10 +155,67 @@ async fn list(config: std::path::PathBuf) -> Result<()> {
     Ok(())
 }
 
-async fn revoke(config: std::path::PathBuf, id: String) -> Result<()> {
+async fn list_broker(broker: String, admin_token: String) -> Result<()> {
+    for session in
+        get_json_auth::<Vec<SessionResponse>>(&broker, "/api/sessions", &admin_token).await?
+    {
+        let status = if session.revoked_at.is_none()
+            && chrono::DateTime::parse_from_rfc3339(&session.expires_at)
+                .map(|expires_at| expires_at.with_timezone(&chrono::Utc) > chrono::Utc::now())
+                .unwrap_or(false)
+        {
+            "active"
+        } else {
+            "inactive"
+        };
+        println!(
+            "{}\t{}\t{}\t{}\t{}\t{}",
+            session.session_id,
+            session.actor,
+            if session.github_repo.is_empty() {
+                "-"
+            } else {
+                &session.github_repo
+            },
+            session
+                .issue
+                .map(|issue| issue.to_string())
+                .unwrap_or_else(|| "-".to_owned()),
+            session.target,
+            status
+        );
+    }
+    Ok(())
+}
+
+async fn revoke(
+    config: Option<std::path::PathBuf>,
+    broker: Option<String>,
+    admin_token: Option<String>,
+    id: String,
+) -> Result<()> {
+    if let Some(config) = config {
+        revoke_local(config, id).await
+    } else {
+        revoke_broker(
+            settings::broker(broker)?,
+            admin_token.context("provide --admin-token")?,
+            id,
+        )
+        .await
+    }
+}
+
+async fn revoke_local(config: std::path::PathBuf, id: String) -> Result<()> {
     let config = Config::load(config)?;
     let store = SessionStore::open(&config.metadata.sqlite_path).await?;
     store.revoke(&SessionId::from(id.clone())).await?;
+    println!("revoked {id}");
+    Ok(())
+}
+
+async fn revoke_broker(broker: String, admin_token: String, id: String) -> Result<()> {
+    post_empty_auth(&broker, &format!("/api/sessions/{id}/revoke"), &admin_token).await?;
     println!("revoked {id}");
     Ok(())
 }
@@ -143,4 +236,35 @@ where
     let body = response.text().await?;
     anyhow::ensure!(status.is_success(), "broker request failed: {body}");
     Ok(serde_json::from_str(&body)?)
+}
+
+async fn get_json_auth<R>(broker: &str, path: &str, token: &str) -> Result<R>
+where
+    R: for<'de> Deserialize<'de>,
+{
+    let url = format!("{}{}", broker.trim_end_matches('/'), path);
+    let response = reqwest::Client::new()
+        .get(&url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .with_context(|| format!("failed to connect to broker {broker}"))?;
+    let status = response.status();
+    let body = response.text().await?;
+    anyhow::ensure!(status.is_success(), "broker request failed: {body}");
+    Ok(serde_json::from_str(&body)?)
+}
+
+async fn post_empty_auth(broker: &str, path: &str, token: &str) -> Result<()> {
+    let url = format!("{}{}", broker.trim_end_matches('/'), path);
+    let response = reqwest::Client::new()
+        .post(&url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .with_context(|| format!("failed to connect to broker {broker}"))?;
+    let status = response.status();
+    let body = response.text().await?;
+    anyhow::ensure!(status.is_success(), "broker request failed: {body}");
+    Ok(())
 }

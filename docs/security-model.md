@@ -20,4 +20,4 @@ MySQL proxy MVP requires client-side clear-password support toward Gatebase so t
 
 The first admin user is bootstrapped locally with `gatebase admin user create --config ... --role admin --password-stdin`. After bootstrap, broker admin APIs require login through `/api/admin/login` and enforce roles. User passwords are stored as Argon2 hashes in the metadata SQLite database.
 
-Admin API roles are ordered `admin > operator > viewer`. `viewer` can read sessions and audit events, `operator` can also revoke sessions, and `admin` can manage users.
+Admin API roles are ordered `admin > operator > viewer`. `viewer` can read sessions and audit events, `operator` can also revoke sessions, and `admin` can manage users and run maintenance pruning.

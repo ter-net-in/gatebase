@@ -1,16 +1,56 @@
 use crate::cli::MaintenanceCommand;
-use anyhow::Result;
+use crate::settings;
+use anyhow::{Context, Result};
 use chrono::{Duration, Utc};
 use gatebase_config::Config;
 use gatebase_session::{PruneCutoffs, SessionStore};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize)]
+struct PruneRequest {
+    dry_run: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct PruneResponse {
+    audit_events: u64,
+    rollback_artifacts: u64,
+    sessions: u64,
+    access_tokens: u64,
+    active_connections: u64,
+    total: u64,
+}
 
 pub(crate) async fn run(command: MaintenanceCommand) -> Result<()> {
     match command {
-        MaintenanceCommand::Prune { config, dry_run } => prune(config, dry_run).await,
+        MaintenanceCommand::Prune {
+            config,
+            broker,
+            admin_token,
+            dry_run,
+        } => prune(config, broker, admin_token, dry_run).await,
     }
 }
 
-async fn prune(config: std::path::PathBuf, dry_run: bool) -> Result<()> {
+async fn prune(
+    config: Option<std::path::PathBuf>,
+    broker: Option<String>,
+    admin_token: Option<String>,
+    dry_run: bool,
+) -> Result<()> {
+    if let Some(config) = config {
+        prune_local(config, dry_run).await
+    } else {
+        prune_broker(
+            settings::broker(broker)?,
+            admin_token.context("provide --admin-token")?,
+            dry_run,
+        )
+        .await
+    }
+}
+
+async fn prune_local(config: std::path::PathBuf, dry_run: bool) -> Result<()> {
     let config = Config::load(config)?;
     let now = Utc::now();
     let cutoffs = PruneCutoffs {
@@ -23,12 +63,71 @@ async fn prune(config: std::path::PathBuf, dry_run: bool) -> Result<()> {
     };
     let store = SessionStore::open(&config.metadata.sqlite_path).await?;
     let result = store.prune(&cutoffs, dry_run).await?;
-    let prefix = if dry_run { "would_prune" } else { "pruned" };
-    println!("{prefix} audit_events {}", result.audit_events);
-    println!("{prefix} rollback_artifacts {}", result.rollback_artifacts);
-    println!("{prefix} sessions {}", result.sessions);
-    println!("{prefix} access_tokens {}", result.access_tokens);
-    println!("{prefix} active_connections {}", result.active_connections);
-    println!("{prefix} total {}", result.total());
+    print_prune_result(
+        if dry_run { "would_prune" } else { "pruned" },
+        result.audit_events,
+        result.rollback_artifacts,
+        result.sessions,
+        result.access_tokens,
+        result.active_connections,
+        result.total(),
+    );
     Ok(())
+}
+
+async fn prune_broker(broker: String, admin_token: String, dry_run: bool) -> Result<()> {
+    let response: PruneResponse = post_json_auth(
+        &broker,
+        "/api/admin/maintenance/prune",
+        &admin_token,
+        &PruneRequest { dry_run },
+    )
+    .await?;
+    let prefix = if dry_run { "would_prune" } else { "pruned" };
+    print_prune_result(
+        prefix,
+        response.audit_events,
+        response.rollback_artifacts,
+        response.sessions,
+        response.access_tokens,
+        response.active_connections,
+        response.total,
+    );
+    Ok(())
+}
+
+fn print_prune_result(
+    prefix: &str,
+    audit_events: u64,
+    rollback_artifacts: u64,
+    sessions: u64,
+    access_tokens: u64,
+    active_connections: u64,
+    total: u64,
+) {
+    println!("{prefix} audit_events {audit_events}");
+    println!("{prefix} rollback_artifacts {rollback_artifacts}");
+    println!("{prefix} sessions {sessions}");
+    println!("{prefix} access_tokens {access_tokens}");
+    println!("{prefix} active_connections {active_connections}");
+    println!("{prefix} total {total}");
+}
+
+async fn post_json_auth<T, R>(broker: &str, path: &str, token: &str, body: &T) -> Result<R>
+where
+    T: Serialize,
+    R: for<'de> Deserialize<'de>,
+{
+    let url = format!("{}{}", broker.trim_end_matches('/'), path);
+    let response = reqwest::Client::new()
+        .post(&url)
+        .bearer_auth(token)
+        .json(body)
+        .send()
+        .await
+        .with_context(|| format!("failed to connect to broker {broker}"))?;
+    let status = response.status();
+    let body = response.text().await?;
+    anyhow::ensure!(status.is_success(), "broker request failed: {body}");
+    Ok(serde_json::from_str(&body)?)
 }

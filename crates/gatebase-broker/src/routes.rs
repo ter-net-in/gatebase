@@ -1,6 +1,6 @@
 use crate::handlers::{
     admin_login, admin_me, create_session, create_user, github_webhook, healthz, list_audit_events,
-    list_sessions, list_users, revoke_session,
+    list_sessions, list_users, prune, revoke_session,
 };
 use crate::state::AppState;
 use axum::routing::{get, post};
@@ -17,6 +17,7 @@ pub(crate) fn router(state: Arc<AppState>) -> Router {
         .route("/api/admin/login", post(admin_login))
         .route("/api/admin/me", get(admin_me))
         .route("/api/admin/users", get(list_users).post(create_user))
+        .route("/api/admin/maintenance/prune", post(prune))
         .route("/webhooks/github", post(github_webhook))
         .with_state(state)
 }

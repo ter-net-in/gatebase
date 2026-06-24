@@ -7,6 +7,12 @@ running from source, prefix examples with `cargo run -p gatebase-cli --`.
 gatebase <command>
 ```
 
+Print version:
+
+```bash
+gatebase --version
+```
+
 Most commands take either `--config <path>` or `--broker <url>`:
 
 | Input | Used by | Meaning |
@@ -132,16 +138,20 @@ the target protocol.
 
 ## `gatebase session list`
 
-Lists sessions directly from the SQLite metadata store configured in
-`metadata.sqlite_path`. This does not call the broker API.
+Lists sessions. Use `--broker` from a laptop against a running broker, or
+`--config` on the server to read SQLite directly. If neither flag is passed, the
+saved broker URL is used.
 
 ```bash
 gatebase session list --config examples/gatebase.yaml
+gatebase session list --broker https://gatebase.example.com --admin-token <token>
 ```
 
 | Flag | Required | Description |
 | --- | --- | --- |
-| `--config <path>` | Yes | Path to Gatebase YAML config. |
+| `--config <path>` | No | Path to Gatebase YAML config for local SQLite mode. Cannot be combined with `--broker`. |
+| `--broker <url>` | No | Broker base URL for remote API mode. Defaults to saved broker URL. |
+| `--admin-token <token>` | Remote mode | Bearer token from `gatebase admin login`. |
 
 Output columns are tab-separated:
 
@@ -169,16 +179,20 @@ gatebase session create-local \
 
 ## `gatebase session revoke`
 
-Revokes a session directly in the SQLite metadata store. Proxies poll the store
-and close matching active connections after revocation is observed.
+Revokes a session. Use `--broker` from a laptop against a running broker, or
+`--config` on the server to write SQLite directly. If neither flag is passed, the
+saved broker URL is used.
 
 ```bash
 gatebase session revoke --config examples/gatebase.yaml <session-id>
+gatebase session revoke --broker https://gatebase.example.com --admin-token <token> <session-id>
 ```
 
 | Argument or flag | Required | Description |
 | --- | --- | --- |
-| `--config <path>` | Yes | Path to Gatebase YAML config. |
+| `--config <path>` | No | Path to Gatebase YAML config for local SQLite mode. Cannot be combined with `--broker`. |
+| `--broker <url>` | No | Broker base URL for remote API mode. Defaults to saved broker URL. |
+| `--admin-token <token>` | Remote mode | Bearer token from `gatebase admin login`. Requires `operator` or higher. |
 | `<session-id>` | Yes | Session ID printed by `session create` or `session list`. |
 
 Successful output:
@@ -219,19 +233,24 @@ created_at actor target engine decision rows statement
 
 ## `gatebase maintenance prune`
 
-Prunes old rows from the SQLite metadata store using the `retention` section in
-the config file. This command deletes old audit events, rollback artifacts,
-expired sessions, old access tokens, and closed active-connection rows. After a real
-prune, it checkpoints WAL and runs `VACUUM` so SQLite can release disk space.
+Prunes old rows from the SQLite metadata store using configured retention
+windows. Use `--broker` from a laptop against a running broker, or `--config` on
+the server to write SQLite directly. If neither flag is passed, the saved broker
+URL is used. This command deletes old audit events, rollback artifacts, expired
+sessions, old access tokens, and closed active-connection rows. After a real
+local prune, it checkpoints WAL and runs `VACUUM` so SQLite can release disk
+space.
 
 ```bash
 gatebase maintenance prune --config examples/gatebase.yaml --dry-run
-gatebase maintenance prune --config examples/gatebase.yaml
+gatebase maintenance prune --broker https://gatebase.example.com --admin-token <token> --dry-run
 ```
 
 | Flag | Required | Description |
 | --- | --- | --- |
-| `--config <path>` | Yes | Path to Gatebase YAML config. |
+| `--config <path>` | No | Path to Gatebase YAML config for local SQLite mode. Cannot be combined with `--broker`. |
+| `--broker <url>` | No | Broker base URL for remote API mode. Defaults to saved broker URL. |
+| `--admin-token <token>` | Remote mode | Bearer token from `gatebase admin login`. Requires `admin`. |
 | `--dry-run` | No | Count rows that would be deleted without deleting or vacuuming. |
 
 Output:

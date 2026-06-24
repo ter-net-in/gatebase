@@ -461,4 +461,12 @@ curl -sS https://gatebase.example.com/api/audit/events \
   -H "Authorization: Bearer $TOKEN"
 ```
 
+Remote admin CLI commands can use either `--broker` or a saved broker URL:
+
+```bash
+gatebase config --broker https://gatebase.example.com
+gatebase session list --admin-token "$TOKEN"
+gatebase maintenance prune --admin-token "$TOKEN" --dry-run
+```
+
 Blocked SQL should fail at the proxy and create audit events.

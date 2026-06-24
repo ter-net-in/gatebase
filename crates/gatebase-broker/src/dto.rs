@@ -36,6 +36,21 @@ pub struct UserResponse {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct PruneRequest {
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PruneResponse {
+    pub audit_events: u64,
+    pub rollback_artifacts: u64,
+    pub sessions: u64,
+    pub access_tokens: u64,
+    pub active_connections: u64,
+    pub total: u64,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct CreateSessionRequest {
     pub token: String,
 }

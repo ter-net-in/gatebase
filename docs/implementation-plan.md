@@ -10,7 +10,7 @@ Implemented:
 - Apache-2.0 license.
 - SQLite-backed session and audit foundations.
 - CLI commands for broker, Postgres proxy, MySQL proxy, config check, saved default broker URL, token-backed sessions, local config-allowed sessions, and admin user management.
-- Broker HTTP API with public token exchange, GitHub webhook intake, admin login, admin user management, and RBAC-protected session/audit endpoints.
+- Broker HTTP API with public token exchange, GitHub webhook intake, admin login, admin user management, admin maintenance pruning, and RBAC-protected session/audit endpoints.
 - SQLite-backed admin users with Argon2 password hashes and `viewer`, `operator`, `admin` roles.
 - GitHub provider trait and GitHub App implementation.
 - Target-owned access signal policy for GitHub issues and optional `allow_cli_sessions`.

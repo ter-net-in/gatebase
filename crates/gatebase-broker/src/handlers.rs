@@ -2,7 +2,7 @@ use crate::auth::{issue_admin_token, require_role};
 use crate::dto::{
     AdminLoginRequest, AdminLoginResponse, AdminMeResponse, AuditEventResponse, AuditQuery,
     CreateSessionRequest, CreateSessionResponse, CreateUserRequest, GitHubWebhookPayload,
-    SessionResponse, UserResponse,
+    PruneRequest, PruneResponse, SessionResponse, UserResponse,
 };
 use crate::state::AppState;
 use axum::body::Bytes;
@@ -13,7 +13,9 @@ use axum::Json;
 use chrono::{Duration, Utc};
 use gatebase_core::{AccessToken, SessionId, User, UserRole};
 use gatebase_github::{verify_webhook_signature, AccessRequest, GitProvider};
-use gatebase_session::{hash_access_token, new_session, verify_password, AuditEventFilter};
+use gatebase_session::{
+    hash_access_token, new_session, verify_password, AuditEventFilter, PruneCutoffs,
+};
 use std::str::FromStr;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -157,6 +159,36 @@ pub(crate) async fn create_user(
         .await
         .map_err(|error| error.to_string())?;
     Ok(Json(user_response(user)))
+}
+
+pub(crate) async fn prune(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<PruneRequest>,
+) -> Result<Json<PruneResponse>, String> {
+    require_role(&state, &headers, UserRole::Admin).map_err(status_message)?;
+    let now = Utc::now();
+    let cutoffs = PruneCutoffs {
+        audit_before: now - Duration::days(state.config.retention.audit_days as i64),
+        rollback_before: now - Duration::days(state.config.retention.rollback_days as i64),
+        session_before: now - Duration::days(state.config.retention.session_days as i64),
+        approval_before: now - Duration::days(state.config.retention.approval_days as i64),
+        active_connection_before: now
+            - Duration::days(state.config.retention.active_connection_days as i64),
+    };
+    let result = state
+        .store
+        .prune(&cutoffs, request.dry_run)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(Json(PruneResponse {
+        audit_events: result.audit_events,
+        rollback_artifacts: result.rollback_artifacts,
+        sessions: result.sessions,
+        access_tokens: result.access_tokens,
+        active_connections: result.active_connections,
+        total: result.total(),
+    }))
 }
 
 pub(crate) async fn github_webhook(

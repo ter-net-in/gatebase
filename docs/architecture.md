@@ -36,7 +36,7 @@ Admin API roles are ordered `admin > operator > viewer`.
 | --- | --- |
 | `viewer` | Read sessions, audit events, and current identity. |
 | `operator` | Viewer permissions plus session revoke. |
-| `admin` | Operator permissions plus user management. |
+| `admin` | Operator permissions plus user management and maintenance pruning. |
 
 ## Trust Boundary
 

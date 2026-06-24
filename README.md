@@ -184,6 +184,7 @@ and examples.
 | `GET /api/admin/me` | Return authenticated admin user. Requires `viewer` or higher. |
 | `GET /api/admin/users` | List admin users. Requires `admin`. |
 | `POST /api/admin/users` | Create admin user. Requires `admin`. |
+| `POST /api/admin/maintenance/prune` | Prune old metadata rows. Requires `admin`. |
 | `POST /webhooks/github` | GitHub App webhook intake. Verifies the `X-Hub-Signature-256` HMAC; invalid signatures return `401`. |
 
 Example session request:

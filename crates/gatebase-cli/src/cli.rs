@@ -4,6 +4,7 @@ use std::path::PathBuf;
 #[derive(Debug, Parser)]
 #[command(
     name = "gatebase",
+    version,
     about = "Approved, temporary access to production databases"
 )]
 pub(crate) struct Cli {
@@ -138,12 +139,20 @@ pub(crate) enum SessionCommand {
         actor: String,
     },
     List {
+        #[arg(long, conflicts_with = "broker")]
+        config: Option<PathBuf>,
+        #[arg(long, conflicts_with = "config")]
+        broker: Option<String>,
         #[arg(long)]
-        config: PathBuf,
+        admin_token: Option<String>,
     },
     Revoke {
+        #[arg(long, conflicts_with = "broker")]
+        config: Option<PathBuf>,
+        #[arg(long, conflicts_with = "config")]
+        broker: Option<String>,
         #[arg(long)]
-        config: PathBuf,
+        admin_token: Option<String>,
         id: String,
     },
 }
@@ -173,8 +182,12 @@ pub(crate) enum AuditCommand {
 #[derive(Debug, Subcommand)]
 pub(crate) enum MaintenanceCommand {
     Prune {
+        #[arg(long, conflicts_with = "broker")]
+        config: Option<PathBuf>,
+        #[arg(long, conflicts_with = "config")]
+        broker: Option<String>,
         #[arg(long)]
-        config: PathBuf,
+        admin_token: Option<String>,
         #[arg(long)]
         dry_run: bool,
     },

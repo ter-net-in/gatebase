@@ -1094,7 +1094,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-audit"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1106,7 +1106,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-broker"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "axum",
@@ -1125,7 +1125,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-cli"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1138,6 +1138,7 @@ dependencies = [
  "gatebase-session",
  "mysql_async",
  "reqwest",
+ "rpassword",
  "serde",
  "serde_json",
  "tokio",
@@ -1147,7 +1148,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-config"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "gatebase-core",
@@ -1157,7 +1158,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-core"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "chrono",
  "serde",
@@ -1168,7 +1169,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-github"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1187,7 +1188,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-metadata"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1199,7 +1200,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-policy"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "gatebase-config",
  "gatebase-core",
@@ -1208,7 +1209,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-proxy-core"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "gatebase-config",
@@ -1219,7 +1220,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-proxy-mysql"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1238,7 +1239,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-proxy-postgres"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1257,7 +1258,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-session"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "argon2",
@@ -2649,6 +2650,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "rpassword"
+version = "7.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2da316a15f47e3d053de9cb2c439650bd8fa4aaeb9365f2e5f27f492ff73c196"
+dependencies = [
+ "libc",
+ "rtoolbox",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "rtoolbox"
+version = "0.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "50a0e551c1e27e1731aba276dbeaeac73f53c7cd34d1bda485d02bd1e0f36844"
+dependencies = [
+ "libc",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "rust_decimal"
 version = "1.42.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3979,6 +4001,15 @@ name = "windows-sys"
 version = "0.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d"
+dependencies = [
+ "windows-targets",
+]
+
+[[package]]
+name = "windows-sys"
+version = "0.59.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e38bc4d79ed67fd075bcc251a1c39b32a1776bbe92e5bef1f0bf1f8c531853b"
 dependencies = [
  "windows-targets",
 ]

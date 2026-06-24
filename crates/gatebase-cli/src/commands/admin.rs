@@ -51,19 +51,17 @@ struct CreateUserArgs {
 
 pub(crate) async fn run(command: AdminCommand) -> Result<()> {
     match command {
-        AdminCommand::Login {
-            broker,
-            username,
-            password_stdin,
-        } => login(broker, username, password_stdin).await,
         AdminCommand::User { command } => user(command).await,
     }
 }
 
-async fn login(broker: Option<String>, username: String, password_stdin: bool) -> Result<()> {
-    anyhow::ensure!(password_stdin, "provide --password-stdin");
+pub(crate) async fn login(
+    broker: Option<String>,
+    username: String,
+    password_stdin: bool,
+) -> Result<()> {
     let broker = settings::broker(broker)?;
-    let password = read_stdin_secret()?;
+    let password = read_login_password(password_stdin)?;
     let response: AdminLoginResponse = post_json(
         &broker,
         "/api/admin/login",
@@ -71,9 +69,12 @@ async fn login(broker: Option<String>, username: String, password_stdin: bool) -
         &AdminLoginRequest { username, password },
     )
     .await?;
+    let mut config = settings::load()?;
+    config.admin_token = Some(response.token.clone());
+    let path = settings::save(&config)?;
     println!("username {}", response.username);
     println!("role {}", response.role);
-    println!("token {}", response.token);
+    println!("saved {}", path.display());
     Ok(())
 }
 
@@ -149,7 +150,7 @@ async fn create_user(args: CreateUserArgs) -> Result<()> {
     } else {
         let broker = settings::broker(args.broker)?;
         let password = read_stdin_secret()?;
-        let token = args.admin_token.context("provide --admin-token")?;
+        let token = settings::admin_token(args.admin_token)?;
         let user: UserResponse = post_json(
             &broker,
             "/api/admin/users",
@@ -198,14 +199,14 @@ async fn list_users(
         }
     } else if let Some(broker) = broker {
         let broker = settings::broker(Some(broker))?;
-        let token = admin_token.context("provide --admin-token")?;
+        let token = settings::admin_token(admin_token)?;
         let users: Vec<UserResponse> = get_json(&broker, "/api/admin/users", &token).await?;
         for user in users {
             print_user(&user);
         }
     } else {
         let broker = settings::broker(None)?;
-        let token = admin_token.context("provide --admin-token")?;
+        let token = settings::admin_token(admin_token)?;
         let users: Vec<UserResponse> = get_json(&broker, "/api/admin/users", &token).await?;
         for user in users {
             print_user(&user);
@@ -223,6 +224,17 @@ fn read_stdin_secret() -> Result<String> {
     let mut value = String::new();
     std::io::stdin().read_to_string(&mut value)?;
     Ok(value.trim_end_matches(['\r', '\n']).to_owned())
+}
+
+fn read_login_password(password_stdin: bool) -> Result<String> {
+    use std::io::IsTerminal;
+    if password_stdin {
+        read_stdin_secret()
+    } else if std::io::stdin().is_terminal() {
+        Ok(rpassword::prompt_password("Password: ")?)
+    } else {
+        anyhow::bail!("provide --password-stdin or run from a terminal")
+    }
 }
 
 fn read_admin_and_user_passwords(admin_password_stdin: bool) -> Result<(String, String)> {

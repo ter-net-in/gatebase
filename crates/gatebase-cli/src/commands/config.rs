@@ -1,14 +1,14 @@
 use crate::cli::{ConfigArgs, ConfigCommand};
-use crate::settings::{save, CliSettings};
+use crate::settings::{load, save};
 use anyhow::Result;
 use gatebase_config::Config;
 use std::path::PathBuf;
 
 pub(crate) async fn run(args: ConfigArgs) -> Result<()> {
     if let Some(broker) = args.broker {
-        let path = save(&CliSettings {
-            broker: Some(broker.clone()),
-        })?;
+        let mut settings = load()?;
+        settings.broker = Some(broker.clone());
+        let path = save(&settings)?;
         println!("broker {broker}");
         println!("saved {}", path.display());
         return Ok(());

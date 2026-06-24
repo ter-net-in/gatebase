@@ -15,6 +15,11 @@ pub(crate) async fn dispatch(cli: Cli) -> Result<()> {
         }
         Command::Proxy { command } => proxy::run(command).await,
         Command::Config { args } => config::run(args).await,
+        Command::Login {
+            broker,
+            username,
+            password_stdin,
+        } => admin::login(broker, username, password_stdin).await,
         Command::Session { command } => session::run(command).await,
         Command::Audit { command } => audit::run(command).await,
         Command::Maintenance { command } => maintenance::run(command).await,

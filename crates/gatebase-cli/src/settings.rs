@@ -4,7 +4,10 @@ use std::path::PathBuf;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub(crate) struct CliSettings {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) broker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) admin_token: Option<String>,
 }
 
 pub(crate) fn load() -> Result<CliSettings> {
@@ -22,6 +25,11 @@ pub(crate) fn save(settings: &CliSettings) -> Result<PathBuf> {
         .context("settings path does not have parent directory")?;
     std::fs::create_dir_all(parent)?;
     std::fs::write(&path, serde_json::to_vec_pretty(settings)?)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    }
     Ok(path)
 }
 
@@ -29,6 +37,12 @@ pub(crate) fn broker(explicit: Option<String>) -> Result<String> {
     explicit
         .or(load()?.broker)
         .context("provide --broker or run gatebase config --broker <url>")
+}
+
+pub(crate) fn admin_token(explicit: Option<String>) -> Result<String> {
+    explicit
+        .or(load()?.admin_token)
+        .context("provide --admin-token or run gatebase login")
 }
 
 pub(crate) fn broker_or_localhost(explicit: Option<String>) -> Result<String> {

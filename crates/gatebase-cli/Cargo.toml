@@ -22,6 +22,7 @@ gatebase-proxy-mysql = { path = "../gatebase-proxy-mysql" }
 gatebase-proxy-postgres = { path = "../gatebase-proxy-postgres" }
 gatebase-session = { path = "../gatebase-session" }
 reqwest.workspace = true
+rpassword.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

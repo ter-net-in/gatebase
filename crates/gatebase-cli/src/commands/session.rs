@@ -125,7 +125,7 @@ async fn list(
     } else {
         list_broker(
             settings::broker(broker)?,
-            admin_token.context("provide --admin-token")?,
+            settings::admin_token(admin_token)?,
         )
         .await
     }
@@ -199,7 +199,7 @@ async fn revoke(
     } else {
         revoke_broker(
             settings::broker(broker)?,
-            admin_token.context("provide --admin-token")?,
+            settings::admin_token(admin_token)?,
             id,
         )
         .await

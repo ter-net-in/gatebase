@@ -43,7 +43,7 @@ async fn prune(
     } else {
         prune_broker(
             settings::broker(broker)?,
-            admin_token.context("provide --admin-token")?,
+            settings::admin_token(admin_token)?,
             dry_run,
         )
         .await

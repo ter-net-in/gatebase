@@ -26,6 +26,14 @@ pub(crate) enum Command {
         #[command(flatten)]
         args: ConfigArgs,
     },
+    Login {
+        #[arg(long)]
+        broker: Option<String>,
+        #[arg(long)]
+        username: String,
+        #[arg(long)]
+        password_stdin: bool,
+    },
     Session {
         #[command(subcommand)]
         command: SessionCommand,
@@ -46,14 +54,6 @@ pub(crate) enum Command {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum AdminCommand {
-    Login {
-        #[arg(long)]
-        broker: Option<String>,
-        #[arg(long)]
-        username: String,
-        #[arg(long)]
-        password_stdin: bool,
-    },
     User {
         #[command(subcommand)]
         command: AdminUserCommand,

@@ -69,7 +69,7 @@ async fn list(args: AuditListArgs) -> Result<()> {
     } else {
         list_from_broker(
             settings::broker(args.broker)?,
-            args.admin_token.context("provide --admin-token")?,
+            settings::admin_token(args.admin_token)?,
             args.actor,
             args.target,
             args.decision,

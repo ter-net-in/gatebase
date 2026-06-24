@@ -165,6 +165,21 @@ printf 'change-me\n' | cargo run -p gatebase-cli -- admin user create \
   --password-stdin
 ```
 
+### Web dashboard
+
+Log in once (the token is saved to `~/.config/gatebase/config.json`), then open
+the read-only dashboard:
+
+```bash
+cargo run -p gatebase-cli -- login --username root
+cargo run -p gatebase-cli -- ui      # serves http://127.0.0.1:7777
+```
+
+`gatebase ui` runs a local server that serves the dashboard and proxies API calls
+to the broker with your saved token, so the browser never holds it. After login,
+other admin commands (`session list`, `audit list`, …) also reuse the saved token
+and no longer need `--admin-token`.
+
 ## CLI reference
 
 See [`docs/cli.md`](docs/cli.md) for the full command reference, flags, outputs,
@@ -179,13 +194,19 @@ and examples.
 | `GET /api/sessions` | List sessions. Requires `viewer` or higher. |
 | `POST /api/sessions` | Create a session. Body: `{token}`. Returns `{session_id, expires_at, connection_string}`. |
 | `POST /api/sessions/{id}/revoke` | Revoke a session. Requires `operator` or higher. |
-| `GET /api/audit/events` | List audit events. Query params: `actor`, `target`, `decision`, `limit`. Requires `viewer` or higher. |
-| `POST /api/admin/login` | Exchange username/password for an admin bearer token. |
+| `GET /api/audit/events` | List audit events. Query params: `actor`, `target`, `decision`, `limit`, `offset`. Requires `viewer` or higher. |
+| `GET /api/audit/events/{id}/rollback` | Rollback artifact linked to an audit event (`404` if none). Requires `viewer` or higher. |
+| `GET /api/rollbacks` | List rollback artifacts. Requires `viewer` or higher. |
+| `GET /api/connections` | List live connections. Requires `viewer` or higher. |
+| `GET /api/activity` | Unified activity feed (audit + rollback + connection events). Requires `viewer` or higher. |
+| `POST /api/admin/login` | Exchange username/password for an admin bearer token (any role; expires in 8h). |
 | `GET /api/admin/me` | Return authenticated admin user. Requires `viewer` or higher. |
 | `GET /api/admin/users` | List admin users. Requires `admin`. |
 | `POST /api/admin/users` | Create admin user. Requires `admin`. |
 | `POST /api/admin/maintenance/prune` | Prune old metadata rows. Requires `admin`. |
 | `POST /webhooks/github` | GitHub App webhook intake. Verifies the `X-Hub-Signature-256` HMAC; invalid signatures return `401`. |
+
+List endpoints (`sessions`, `audit/events`, `rollbacks`, `connections`, `activity`, `admin/users`) accept `limit` and `offset` query parameters; omitting them returns all rows.
 
 Example session request:
 

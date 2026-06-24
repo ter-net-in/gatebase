@@ -2,8 +2,8 @@ use crate::entities;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use gatebase_core::{
-    AccessToken, ActiveConnection, AuditEvent, AuditEventId, Decision, Session, SessionId, User,
-    UserRole,
+    AccessToken, ActiveConnection, AuditEvent, AuditEventId, Decision, RollbackArtifact, Session,
+    SessionId, User, UserRole,
 };
 use std::str::FromStr;
 
@@ -68,6 +68,27 @@ pub(crate) fn model_to_audit_event(model: entities::audit_event::Model) -> Resul
         },
         rows_affected: model.rows_affected,
         error: model.error,
+        created_at: parse_time(&model.created_at)?,
+        rollback_artifact_id: model.rollback_artifact_id,
+    })
+}
+
+pub(crate) fn model_to_rollback_artifact(
+    model: entities::rollback_artifact::Model,
+) -> Result<RollbackArtifact> {
+    Ok(RollbackArtifact {
+        id: model.id,
+        session_id: SessionId::from(model.session_id),
+        actor: model.actor,
+        target: model.target,
+        engine: FromStr::from_str(&model.engine)?,
+        statement: model.statement,
+        table: model.table_name,
+        primary_key_column: model.primary_key_column,
+        before_rows: serde_json::from_str(&model.before_rows)?,
+        inverse_sql: model.inverse_sql,
+        manual_required: model.manual_required,
+        reason: model.reason,
         created_at: parse_time(&model.created_at)?,
     })
 }

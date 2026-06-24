@@ -197,6 +197,7 @@ async fn handle_query(
             Decision::Blocked,
             None,
             policy_decision.reason.clone(),
+            None,
         )
         .await?;
         write_err(
@@ -212,7 +213,7 @@ async fn handle_query(
         return Ok(());
     }
 
-    capture_rollback_artifact(statement, upstream, rollback).await?;
+    let rollback_artifact_id = capture_rollback_artifact(statement, upstream, rollback).await?;
 
     match timeout(QUERY_TIMEOUT, upstream.query_iter(statement)).await {
         Ok(Ok(mut result)) => {
@@ -231,6 +232,7 @@ async fn handle_query(
                     Decision::Allowed,
                     Some(rows_affected),
                     None,
+                    rollback_artifact_id,
                 )
                 .await?;
             } else {
@@ -243,6 +245,7 @@ async fn handle_query(
                     Decision::Allowed,
                     Some(affected_rows as i64),
                     None,
+                    rollback_artifact_id,
                 )
                 .await?;
             }
@@ -255,6 +258,7 @@ async fn handle_query(
                 Decision::Allowed,
                 None,
                 Some(message.clone()),
+                rollback_artifact_id,
             )
             .await?;
             write_err(stream, response_sequence, 1105, &message).await?;
@@ -267,6 +271,7 @@ async fn handle_query(
                 Decision::Allowed,
                 None,
                 Some(message.clone()),
+                rollback_artifact_id,
             )
             .await?;
             write_err(stream, response_sequence, 1205, &message).await?;

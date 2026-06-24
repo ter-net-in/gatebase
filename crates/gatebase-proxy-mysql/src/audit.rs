@@ -38,6 +38,7 @@ pub(crate) async fn write_audit(
     decision: Decision,
     rows_affected: Option<i64>,
     error: Option<String>,
+    rollback_artifact_id: Option<String>,
 ) -> Result<()> {
     let event = AuditEvent {
         id: AuditEventId::new(),
@@ -50,6 +51,7 @@ pub(crate) async fn write_audit(
         rows_affected,
         error,
         created_at: Utc::now(),
+        rollback_artifact_id,
     };
     for sink in context.sinks {
         if let Err(error) = sink.write(&event).await {

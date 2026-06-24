@@ -151,7 +151,7 @@ gatebase session list --broker https://gatebase.example.com --admin-token <token
 | --- | --- | --- |
 | `--config <path>` | No | Path to Gatebase YAML config for local SQLite mode. Cannot be combined with `--broker`. |
 | `--broker <url>` | No | Broker base URL for remote API mode. Defaults to saved broker URL. |
-| `--admin-token <token>` | Remote mode | Bearer token from `gatebase admin login`. |
+| `--admin-token <token>` | Remote mode | Bearer token from `gatebase login`. Optional once you have run `gatebase login`, which saves the token. |
 
 Output columns are tab-separated:
 
@@ -192,7 +192,7 @@ gatebase session revoke --broker https://gatebase.example.com --admin-token <tok
 | --- | --- | --- |
 | `--config <path>` | No | Path to Gatebase YAML config for local SQLite mode. Cannot be combined with `--broker`. |
 | `--broker <url>` | No | Broker base URL for remote API mode. Defaults to saved broker URL. |
-| `--admin-token <token>` | Remote mode | Bearer token from `gatebase admin login`. Requires `operator` or higher. |
+| `--admin-token <token>` | Remote mode | Bearer token from `gatebase login`. Optional once you have run `gatebase login`, which saves the token. Requires `operator` or higher. |
 | `<session-id>` | Yes | Session ID printed by `session create` or `session list`. |
 
 Successful output:
@@ -218,12 +218,16 @@ gatebase audit list --config /etc/gatebase/gatebase.yaml --decision blocked --js
 | --- | --- | --- |
 | `--broker <url>` | No | Broker base URL for remote API mode. Defaults to saved broker URL. |
 | `--config <path>` | No | Path to Gatebase YAML config for local SQLite mode. Cannot be combined with `--broker`. |
-| `--admin-token <token>` | Remote mode | Bearer token from `gatebase admin login`. |
+| `--admin-token <token>` | Remote mode | Bearer token from `gatebase login`. Optional once you have run `gatebase login`, which saves the token. |
 | `--actor <name>` | No | Filter by actor. |
 | `--target <name>` | No | Filter by target. |
 | `--decision <allowed|blocked>` | No | Filter by policy decision. |
 | `--limit <n>` | No | Maximum events to return. Defaults to `100`. |
 | `--json` | No | Print JSON instead of tab-separated output. |
+
+The broker `GET /api/audit/events` endpoint also accepts an `offset` query
+parameter for pagination (used by the web UI); the CLI always requests from
+offset 0.
 
 Default output columns are tab-separated:
 
@@ -250,7 +254,7 @@ gatebase maintenance prune --broker https://gatebase.example.com --admin-token <
 | --- | --- | --- |
 | `--config <path>` | No | Path to Gatebase YAML config for local SQLite mode. Cannot be combined with `--broker`. |
 | `--broker <url>` | No | Broker base URL for remote API mode. Defaults to saved broker URL. |
-| `--admin-token <token>` | Remote mode | Bearer token from `gatebase admin login`. Requires `admin`. |
+| `--admin-token <token>` | Remote mode | Bearer token from `gatebase login`. Optional once you have run `gatebase login`, which saves the token. Requires `admin`. |
 | `--dry-run` | No | Count rows that would be deleted without deleting or vacuuming. |
 
 Output:
@@ -266,27 +270,64 @@ would_prune total <count>
 
 Without `--dry-run`, the prefix is `pruned`.
 
-## `gatebase admin login`
+## `gatebase login`
 
-Logs into the broker admin API and prints a bearer token. Store the token in a
-password manager or shell variable for subsequent admin commands.
+Authenticates against the broker and **saves** the bearer token to
+`~/.config/gatebase/config.json`. Subsequent admin commands (`session list`,
+`audit list`, `admin user …`, `maintenance prune`) then reuse it automatically,
+so you no longer need to pass `--admin-token`.
+
+Login is not admin-only: any role (`viewer`, `operator`, `admin`) can log in.
+The role is embedded in the token, and each endpoint enforces its own minimum
+role server-side.
 
 ```bash
-printf 'admin-password\n' | gatebase admin login \
-  --broker https://gatebase.example.com \
-  --username root \
-  --password-stdin
+# pipe the password in
+printf 'password' | gatebase login --username root --password-stdin
+
+# or omit --password-stdin on a terminal to be prompted (masked input)
+gatebase login --username root
 ```
 
 `--broker` defaults to the URL saved by `gatebase config --broker <url>`.
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `--username <name>` | Yes | Broker user to authenticate as. |
+| `--broker <url>` | No | Broker base URL. Defaults to the saved broker URL. |
+| `--password-stdin` | No | Read the password from stdin instead of prompting. Required when stdin is not a terminal. |
 
 Output:
 
 ```text
 username <username>
 role <role>
-token <bearer-token>
+saved <settings-path>
 ```
+
+Tokens expire after 8 hours; run `gatebase login` again to refresh.
+
+## `gatebase ui`
+
+Starts a local web server that serves the read-only dashboard and reverse-proxies
+its API calls to the broker, injecting your saved bearer token. The browser never
+sees the token. Views: sessions, audit events (with the linked rollback for each
+data-changing statement), active connections, users, and a unified activity log.
+
+```bash
+gatebase login --username root      # saves the token first
+gatebase ui                         # serves http://127.0.0.1:7777, opens a browser
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `--broker <url>` | No | Broker base URL. Defaults to the saved broker URL. |
+| `--admin-token <token>` | No | Bearer token. Defaults to the token saved by `gatebase login`. |
+| `--port <port>` | No | Local listen port. Defaults to `7777`. |
+| `--no-open` | No | Do not open a browser automatically. |
+
+The proxy is read-only: it forwards only `GET` requests on a fixed allowlist of
+API paths and binds to localhost.
 
 ## `gatebase admin user create`
 

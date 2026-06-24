@@ -404,8 +404,10 @@ Set GitHub webhook URL to:
 https://gatebase.example.com/webhooks/github
 ```
 
-Protected broker endpoints require `Authorization: Bearer <token>`. Get a token
-with `gatebase admin login` after the broker is running.
+Protected broker endpoints require `Authorization: Bearer <token>`. Run
+`gatebase login` after the broker is running; it saves a token that CLI admin
+commands reuse automatically. For raw HTTP calls, obtain a token from
+`POST /api/admin/login`.
 
 ## Firewall
 
@@ -449,13 +451,26 @@ curl -sS https://gatebase.example.com/api/sessions \
 
 Use returned connection string with `psql`.
 
-Authenticate to protected admin endpoints:
+Authenticate to protected admin endpoints. `gatebase login` saves a token to
+`~/.config/gatebase/config.json`, after which CLI admin commands reuse it with no
+`--admin-token`:
 
 ```bash
-TOKEN=$(printf 'admin-password\n' | gatebase admin login \
+printf 'admin-password' | gatebase login \
   --broker https://gatebase.example.com \
   --username root \
-  --password-stdin | awk '/^token / {print $2}')
+  --password-stdin
+
+gatebase audit list --broker https://gatebase.example.com
+```
+
+For a raw HTTP call, fetch a token from the login API directly:
+
+```bash
+TOKEN=$(curl -sS https://gatebase.example.com/api/admin/login \
+  -H 'content-type: application/json' \
+  -d '{"username":"root","password":"admin-password"}' \
+  | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
 
 curl -sS https://gatebase.example.com/api/audit/events \
   -H "Authorization: Bearer $TOKEN"

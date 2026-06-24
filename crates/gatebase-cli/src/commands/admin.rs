@@ -185,7 +185,7 @@ async fn list_users(
             let admin_password = read_stdin_secret()?;
             authenticate_local_admin(&store, admin_username, &admin_password).await?;
         }
-        for user in store.list_users().await? {
+        for user in store.list_users(None, None).await? {
             println!(
                 "{}\t{}\t{}\t{}\t{}",
                 user.id,

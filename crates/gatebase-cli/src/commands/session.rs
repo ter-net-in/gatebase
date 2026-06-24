@@ -134,7 +134,7 @@ async fn list(
 async fn list_local(config: std::path::PathBuf) -> Result<()> {
     let config = Config::load(config)?;
     let store = SessionStore::open(&config.metadata.sqlite_path).await?;
-    for session in store.list().await? {
+    for session in store.list(None, None).await? {
         println!(
             "{}\t{}\t{}\t{}\t{}\t{}",
             session.id,

@@ -1,8 +1,9 @@
 use crate::auth::{issue_admin_token, require_role};
 use crate::dto::{
-    AdminLoginRequest, AdminLoginResponse, AdminMeResponse, AuditEventResponse, AuditQuery,
-    CreateSessionRequest, CreateSessionResponse, CreateUserRequest, GitHubWebhookPayload,
-    PruneRequest, PruneResponse, SessionResponse, UserResponse,
+    ActiveConnectionResponse, ActivityResponse, AdminLoginRequest, AdminLoginResponse,
+    AdminMeResponse, AuditEventResponse, AuditQuery, CreateSessionRequest, CreateSessionResponse,
+    CreateUserRequest, GitHubWebhookPayload, Pagination, PruneRequest, PruneResponse,
+    RollbackResponse, SessionResponse, UserResponse,
 };
 use crate::state::AppState;
 use axum::body::Bytes;
@@ -23,11 +24,12 @@ use uuid::Uuid;
 pub(crate) async fn list_sessions(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
+    Query(page): Query<Pagination>,
 ) -> Result<Json<Vec<SessionResponse>>, String> {
     require_role(&state, &headers, UserRole::Viewer).map_err(status_message)?;
     let sessions = state
         .store
-        .list()
+        .list(page.limit, page.offset)
         .await
         .map_err(|error| error.to_string())?
         .into_iter()
@@ -57,6 +59,7 @@ pub(crate) async fn list_audit_events(
             target: query.target,
             decision: query.decision,
             limit: query.limit,
+            offset: query.offset,
         })
         .await
         .map_err(|error| error.to_string())?
@@ -72,9 +75,122 @@ pub(crate) async fn list_audit_events(
             rows_affected: event.rows_affected,
             error: event.error,
             created_at: event.created_at.to_rfc3339(),
+            rollback_artifact_id: event.rollback_artifact_id,
         })
         .collect();
     Ok(Json(events))
+}
+
+pub(crate) async fn get_audit_rollback(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<RollbackResponse>, StatusCode> {
+    require_role(&state, &headers, UserRole::Viewer)?;
+    let event = state
+        .store
+        .find_audit_event(&id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+    let rollback_id = event.rollback_artifact_id.ok_or(StatusCode::NOT_FOUND)?;
+    let artifact = state
+        .store
+        .find_rollback_artifact(&rollback_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+    Ok(Json(RollbackResponse {
+        id: artifact.id,
+        session_id: artifact.session_id.to_string(),
+        actor: artifact.actor,
+        target: artifact.target,
+        engine: artifact.engine.to_string(),
+        statement: artifact.statement,
+        table_name: artifact.table,
+        primary_key_column: artifact.primary_key_column,
+        inverse_sql: artifact.inverse_sql,
+        manual_required: artifact.manual_required,
+        reason: artifact.reason,
+        created_at: artifact.created_at.to_rfc3339(),
+    }))
+}
+
+pub(crate) async fn list_rollbacks(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(page): Query<Pagination>,
+) -> Result<Json<Vec<RollbackResponse>>, String> {
+    require_role(&state, &headers, UserRole::Viewer).map_err(status_message)?;
+    let artifacts = state
+        .store
+        .list_rollback_artifacts(page.limit, page.offset)
+        .await
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(|artifact| RollbackResponse {
+            id: artifact.id,
+            session_id: artifact.session_id.to_string(),
+            actor: artifact.actor,
+            target: artifact.target,
+            engine: artifact.engine.to_string(),
+            statement: artifact.statement,
+            table_name: artifact.table,
+            primary_key_column: artifact.primary_key_column,
+            inverse_sql: artifact.inverse_sql,
+            manual_required: artifact.manual_required,
+            reason: artifact.reason,
+            created_at: artifact.created_at.to_rfc3339(),
+        })
+        .collect();
+    Ok(Json(artifacts))
+}
+
+pub(crate) async fn list_connections(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(page): Query<Pagination>,
+) -> Result<Json<Vec<ActiveConnectionResponse>>, String> {
+    require_role(&state, &headers, UserRole::Viewer).map_err(status_message)?;
+    let connections = state
+        .store
+        .list_active_connections(page.limit, page.offset)
+        .await
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(|connection| ActiveConnectionResponse {
+            id: connection.id,
+            session_id: connection.session_id.to_string(),
+            target: connection.target,
+            client_addr: connection.client_addr,
+            connected_at: connection.connected_at.to_rfc3339(),
+            disconnected_at: connection.disconnected_at.map(|time| time.to_rfc3339()),
+        })
+        .collect();
+    Ok(Json(connections))
+}
+
+pub(crate) async fn list_activity(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(page): Query<Pagination>,
+) -> Result<Json<Vec<ActivityResponse>>, String> {
+    require_role(&state, &headers, UserRole::Viewer).map_err(status_message)?;
+    let entries = state
+        .store
+        .list_activity(page.limit, page.offset)
+        .await
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(|entry| ActivityResponse {
+            time: entry.time,
+            category: entry.category,
+            actor: entry.actor,
+            target: entry.target,
+            detail: entry.detail,
+        })
+        .collect();
+    Ok(Json(entries))
 }
 
 pub(crate) async fn revoke_session(
@@ -133,11 +249,12 @@ pub(crate) async fn admin_me(
 pub(crate) async fn list_users(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
+    Query(page): Query<Pagination>,
 ) -> Result<Json<Vec<UserResponse>>, String> {
     require_role(&state, &headers, UserRole::Admin).map_err(status_message)?;
     let users = state
         .store
-        .list_users()
+        .list_users(page.limit, page.offset)
         .await
         .map_err(|error| error.to_string())?
         .into_iter()

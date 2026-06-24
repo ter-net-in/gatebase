@@ -100,6 +100,7 @@ async fn list_from_config(
             target,
             decision,
             limit: Some(limit),
+            offset: None,
         })
         .await?
         .into_iter()

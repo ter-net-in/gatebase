@@ -73,12 +73,19 @@ pub struct SessionResponse {
     pub revoked_at: Option<String>,
 }
 
+#[derive(Debug, Default, Deserialize)]
+pub struct Pagination {
+    pub limit: Option<u64>,
+    pub offset: Option<u64>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct AuditQuery {
     pub actor: Option<String>,
     pub target: Option<String>,
     pub decision: Option<String>,
     pub limit: Option<u64>,
+    pub offset: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -93,6 +100,42 @@ pub struct AuditEventResponse {
     pub rows_affected: Option<i64>,
     pub error: Option<String>,
     pub created_at: String,
+    pub rollback_artifact_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RollbackResponse {
+    pub id: String,
+    pub session_id: String,
+    pub actor: String,
+    pub target: String,
+    pub engine: String,
+    pub statement: String,
+    pub table_name: Option<String>,
+    pub primary_key_column: Option<String>,
+    pub inverse_sql: Option<String>,
+    pub manual_required: bool,
+    pub reason: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ActivityResponse {
+    pub time: String,
+    pub category: String,
+    pub actor: String,
+    pub target: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ActiveConnectionResponse {
+    pub id: String,
+    pub session_id: String,
+    pub target: String,
+    pub client_addr: String,
+    pub connected_at: String,
+    pub disconnected_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

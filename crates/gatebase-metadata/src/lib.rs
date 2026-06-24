@@ -3,4 +3,4 @@ pub mod entities;
 mod mapping;
 mod store;
 
-pub use store::{AuditEventFilter, MetadataStore, PruneCutoffs, PruneResult};
+pub use store::{ActivityEntry, AuditEventFilter, MetadataStore, PruneCutoffs, PruneResult};

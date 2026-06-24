@@ -42,16 +42,19 @@ pub(crate) struct RollbackContext<'a> {
     pub(crate) fail_closed: bool,
 }
 
+/// Capture and persist a rollback artifact for `statement`, returning its id so
+/// the caller can link the corresponding audit event to it. Returns `None` when
+/// no artifact applies (rollback disabled, no sinks, or non-rollback statement).
 pub(crate) async fn capture_rollback_artifact(
     statement: &str,
     upstream: &tokio_postgres::Client,
     context: &RollbackContext<'_>,
-) -> Result<()> {
+) -> Result<Option<String>> {
     if !context.config.enabled || context.sinks.is_empty() {
-        return Ok(());
+        return Ok(None);
     }
     let Some(request) = parse_rollback_request(statement) else {
-        return Ok(());
+        return Ok(None);
     };
 
     let artifact = match build_supported_artifact(statement, upstream, context, &request).await {
@@ -63,7 +66,8 @@ pub(crate) async fn capture_rollback_artifact(
             Some(error.to_string()),
         ),
     };
-    write_artifact(&artifact, context).await
+    write_artifact(&artifact, context).await?;
+    Ok(Some(artifact.id.clone()))
 }
 
 async fn build_supported_artifact(

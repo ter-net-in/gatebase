@@ -3,9 +3,9 @@ use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, Salt
 use argon2::Argon2;
 use chrono::Utc;
 use gatebase_core::{
-    AccessToken, ActiveConnection, AuditEvent, Session, SessionId, User, UserRole,
+    AccessToken, ActiveConnection, AuditEvent, RollbackArtifact, Session, SessionId, User, UserRole,
 };
-use gatebase_metadata::{AuditEventFilter, MetadataStore, PruneCutoffs, PruneResult};
+use gatebase_metadata::{ActivityEntry, AuditEventFilter, MetadataStore, PruneCutoffs, PruneResult};
 use rand_core::OsRng;
 use sha2::{Digest, Sha256};
 use std::path::Path;
@@ -39,8 +39,8 @@ impl SessionStore {
         self.metadata.get_session(session_id).await
     }
 
-    pub async fn list(&self) -> Result<Vec<Session>> {
-        self.metadata.list_sessions().await
+    pub async fn list(&self, limit: Option<u64>, offset: Option<u64>) -> Result<Vec<Session>> {
+        self.metadata.list_sessions(limit, offset).await
     }
 
     pub async fn create_access_token(&self, token: &AccessToken) -> Result<()> {
@@ -74,12 +74,40 @@ impl SessionStore {
             .await
     }
 
-    pub async fn list_active_connections(&self) -> Result<Vec<ActiveConnection>> {
-        self.metadata.list_active_connections().await
+    pub async fn list_active_connections(
+        &self,
+        limit: Option<u64>,
+        offset: Option<u64>,
+    ) -> Result<Vec<ActiveConnection>> {
+        self.metadata.list_active_connections(limit, offset).await
     }
 
     pub async fn list_audit_events(&self, filter: AuditEventFilter) -> Result<Vec<AuditEvent>> {
         self.metadata.list_audit_events(filter).await
+    }
+
+    pub async fn list_rollback_artifacts(
+        &self,
+        limit: Option<u64>,
+        offset: Option<u64>,
+    ) -> Result<Vec<RollbackArtifact>> {
+        self.metadata.list_rollback_artifacts(limit, offset).await
+    }
+
+    pub async fn find_audit_event(&self, id: &str) -> Result<Option<AuditEvent>> {
+        self.metadata.find_audit_event(id).await
+    }
+
+    pub async fn list_activity(
+        &self,
+        limit: Option<u64>,
+        offset: Option<u64>,
+    ) -> Result<Vec<ActivityEntry>> {
+        self.metadata.list_activity(limit, offset).await
+    }
+
+    pub async fn find_rollback_artifact(&self, id: &str) -> Result<Option<RollbackArtifact>> {
+        self.metadata.find_rollback_artifact(id).await
     }
 
     pub async fn prune(&self, cutoffs: &PruneCutoffs, dry_run: bool) -> Result<PruneResult> {
@@ -104,8 +132,12 @@ impl SessionStore {
         Ok(user)
     }
 
-    pub async fn list_users(&self) -> Result<Vec<User>> {
-        self.metadata.list_users().await
+    pub async fn list_users(
+        &self,
+        limit: Option<u64>,
+        offset: Option<u64>,
+    ) -> Result<Vec<User>> {
+        self.metadata.list_users(limit, offset).await
     }
 
     pub async fn find_user_by_username(&self, username: &str) -> Result<Option<User>> {

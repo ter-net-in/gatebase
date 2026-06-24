@@ -13,4 +13,6 @@ pub struct AuditEvent {
     pub rows_affected: Option<i64>,
     pub error: Option<String>,
     pub created_at: DateTime<Utc>,
+    /// Id of the rollback artifact captured for this statement, if any.
+    pub rollback_artifact_id: Option<String>,
 }

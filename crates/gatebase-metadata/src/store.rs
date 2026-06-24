@@ -1,7 +1,7 @@
 use crate::entities;
 use crate::mapping::{
-    model_to_access_token, model_to_active_connection, model_to_audit_event, model_to_session,
-    model_to_user,
+    model_to_access_token, model_to_active_connection, model_to_audit_event,
+    model_to_rollback_artifact, model_to_session, model_to_user,
 };
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -19,12 +19,24 @@ pub struct MetadataStore {
     db: DatabaseConnection,
 }
 
+/// A single row of the unified activity feed (audit + rollback + connection
+/// events), produced server-side via a UNION so it can be paginated.
+#[derive(Debug, Clone)]
+pub struct ActivityEntry {
+    pub time: String,
+    pub category: String,
+    pub actor: String,
+    pub target: String,
+    pub detail: String,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct AuditEventFilter {
     pub actor: Option<String>,
     pub target: Option<String>,
     pub decision: Option<String>,
     pub limit: Option<u64>,
+    pub offset: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -95,6 +107,35 @@ impl MetadataStore {
             .await?;
         self.create_table(entities::access_token::Entity).await?;
         self.create_table(entities::user::Entity).await?;
+        // Added after the table was first shipped; backfill for existing DBs.
+        self.ensure_column("audit_events", "rollback_artifact_id", "text")
+            .await?;
+        Ok(())
+    }
+
+    /// Add a column to an existing SQLite table if it is not already present.
+    async fn ensure_column(&self, table: &str, column: &str, decl: &str) -> Result<()> {
+        let backend = self.db.get_database_backend();
+        let rows = self
+            .db
+            .query_all(Statement::from_string(
+                backend,
+                format!("PRAGMA table_info({table});"),
+            ))
+            .await?;
+        let exists = rows.iter().any(|row| {
+            row.try_get::<String>("", "name")
+                .map(|name| name == column)
+                .unwrap_or(false)
+        });
+        if !exists {
+            self.db
+                .execute(Statement::from_string(
+                    backend,
+                    format!("ALTER TABLE {table} ADD COLUMN {column} {decl};"),
+                ))
+                .await?;
+        }
         Ok(())
     }
 
@@ -121,9 +162,20 @@ impl MetadataStore {
             .transpose()
     }
 
-    pub async fn list_users(&self) -> Result<Vec<User>> {
-        entities::user::Entity::find()
-            .order_by_asc(entities::user::Column::Username)
+    pub async fn list_users(
+        &self,
+        limit: Option<u64>,
+        offset: Option<u64>,
+    ) -> Result<Vec<User>> {
+        let mut query =
+            entities::user::Entity::find().order_by_asc(entities::user::Column::Username);
+        if let Some(limit) = limit {
+            query = query.limit(limit);
+        }
+        if let Some(offset) = offset {
+            query = query.offset(offset);
+        }
+        query
             .all(&self.db)
             .await?
             .into_iter()
@@ -234,8 +286,20 @@ impl MetadataStore {
         Ok(Some(model_to_session(model)?))
     }
 
-    pub async fn list_sessions(&self) -> Result<Vec<Session>> {
-        entities::session::Entity::find()
+    pub async fn list_sessions(
+        &self,
+        limit: Option<u64>,
+        offset: Option<u64>,
+    ) -> Result<Vec<Session>> {
+        let mut query = entities::session::Entity::find()
+            .order_by_desc(entities::session::Column::CreatedAt);
+        if let Some(limit) = limit {
+            query = query.limit(limit);
+        }
+        if let Some(offset) = offset {
+            query = query.offset(offset);
+        }
+        query
             .all(&self.db)
             .await?
             .into_iter()
@@ -269,9 +333,21 @@ impl MetadataStore {
         Ok(())
     }
 
-    pub async fn list_active_connections(&self) -> Result<Vec<ActiveConnection>> {
-        entities::active_connection::Entity::find()
+    pub async fn list_active_connections(
+        &self,
+        limit: Option<u64>,
+        offset: Option<u64>,
+    ) -> Result<Vec<ActiveConnection>> {
+        let mut query = entities::active_connection::Entity::find()
             .filter(entities::active_connection::Column::DisconnectedAt.is_null())
+            .order_by_desc(entities::active_connection::Column::ConnectedAt);
+        if let Some(limit) = limit {
+            query = query.limit(limit);
+        }
+        if let Some(offset) = offset {
+            query = query.offset(offset);
+        }
+        query
             .all(&self.db)
             .await?
             .into_iter()
@@ -291,10 +367,21 @@ impl MetadataStore {
             rows_affected: Set(event.rows_affected),
             error: Set(event.error.clone()),
             created_at: Set(event.created_at.to_rfc3339()),
+            rollback_artifact_id: Set(event.rollback_artifact_id.clone()),
         }
         .insert(&self.db)
         .await?;
         Ok(())
+    }
+
+    pub async fn find_audit_event(&self, id: &str) -> Result<Option<AuditEvent>> {
+        let Some(model) = entities::audit_event::Entity::find_by_id(id)
+            .one(&self.db)
+            .await?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(model_to_audit_event(model)?))
     }
 
     pub async fn list_audit_events(&self, filter: AuditEventFilter) -> Result<Vec<AuditEvent>> {
@@ -311,6 +398,9 @@ impl MetadataStore {
         }
         if let Some(limit) = filter.limit {
             query = query.limit(limit);
+        }
+        if let Some(offset) = filter.offset {
+            query = query.offset(offset);
         }
         query
             .all(&self.db)
@@ -339,6 +429,85 @@ impl MetadataStore {
         .insert(&self.db)
         .await?;
         Ok(())
+    }
+
+    pub async fn find_rollback_artifact(&self, id: &str) -> Result<Option<RollbackArtifact>> {
+        let Some(model) = entities::rollback_artifact::Entity::find_by_id(id)
+            .one(&self.db)
+            .await?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(model_to_rollback_artifact(model)?))
+    }
+
+    pub async fn list_rollback_artifacts(
+        &self,
+        limit: Option<u64>,
+        offset: Option<u64>,
+    ) -> Result<Vec<RollbackArtifact>> {
+        let mut query = entities::rollback_artifact::Entity::find()
+            .order_by_desc(entities::rollback_artifact::Column::CreatedAt);
+        if let Some(limit) = limit {
+            query = query.limit(limit);
+        }
+        if let Some(offset) = offset {
+            query = query.offset(offset);
+        }
+        query
+            .all(&self.db)
+            .await?
+            .into_iter()
+            .map(model_to_rollback_artifact)
+            .collect()
+    }
+
+    /// Unified, time-ordered activity feed merged across audit events, rollback
+    /// artifacts, and connection events. `limit = None` returns all rows.
+    pub async fn list_activity(
+        &self,
+        limit: Option<u64>,
+        offset: Option<u64>,
+    ) -> Result<Vec<ActivityEntry>> {
+        let backend = self.db.get_database_backend();
+        let sql = "\
+            SELECT ts, category, actor, target, detail FROM (\
+                SELECT created_at AS ts, \
+                    CASE WHEN decision = 'blocked' THEN 'audit_blocked' ELSE 'audit_allowed' END AS category, \
+                    actor, target, statement AS detail \
+                FROM audit_events \
+                UNION ALL \
+                SELECT created_at AS ts, 'rollback' AS category, actor, target, \
+                    COALESCE(inverse_sql, statement) AS detail \
+                FROM rollback_artifacts \
+                UNION ALL \
+                SELECT COALESCE(disconnected_at, connected_at) AS ts, \
+                    CASE WHEN disconnected_at IS NULL THEN 'conn_opened' ELSE 'conn_closed' END AS category, \
+                    client_addr AS actor, target, session_id AS detail \
+                FROM active_connections\
+            ) ORDER BY ts DESC LIMIT ? OFFSET ?";
+        // SQLite treats LIMIT -1 as unbounded.
+        let limit = limit.map(|value| value as i64).unwrap_or(-1);
+        let offset = offset.unwrap_or(0) as i64;
+        let rows = self
+            .db
+            .query_all(Statement::from_sql_and_values(
+                backend,
+                sql,
+                [limit.into(), offset.into()],
+            ))
+            .await?;
+        rows.into_iter()
+            .map(|row| {
+                Ok(ActivityEntry {
+                    time: row.try_get("", "ts")?,
+                    category: row.try_get("", "category")?,
+                    actor: row.try_get("", "actor")?,
+                    target: row.try_get("", "target")?,
+                    detail: row.try_get("", "detail")?,
+                })
+            })
+            .collect()
     }
 
     pub async fn prune(&self, cutoffs: &PruneCutoffs, dry_run: bool) -> Result<PruneResult> {

@@ -116,6 +116,7 @@ async fn handle_query_with_row_description(
             Decision::Blocked,
             None,
             policy_decision.reason.clone(),
+            None,
         )
         .await?;
         write_error(
@@ -130,7 +131,7 @@ async fn handle_query_with_row_description(
         return Ok(());
     }
 
-    capture_rollback_artifact(statement, upstream, rollback).await?;
+    let rollback_artifact_id = capture_rollback_artifact(statement, upstream, rollback).await?;
 
     match timeout(IO_TIMEOUT, upstream.simple_query(statement)).await {
         Ok(Ok(messages)) => {
@@ -148,7 +149,15 @@ async fn handle_query_with_row_description(
                     _ => {}
                 }
             }
-            write_audit(context, statement, Decision::Allowed, rows_affected, None).await?;
+            write_audit(
+                context,
+                statement,
+                Decision::Allowed,
+                rows_affected,
+                None,
+                rollback_artifact_id,
+            )
+            .await?;
         }
         Ok(Err(error)) => {
             let message = error.to_string();
@@ -158,6 +167,7 @@ async fn handle_query_with_row_description(
                 Decision::Allowed,
                 None,
                 Some(message.clone()),
+                rollback_artifact_id,
             )
             .await?;
             write_error(writer, "XX000", &message).await?;
@@ -170,6 +180,7 @@ async fn handle_query_with_row_description(
                 Decision::Allowed,
                 None,
                 Some(message.clone()),
+                rollback_artifact_id,
             )
             .await?;
             write_error(writer, "57014", &message).await?;

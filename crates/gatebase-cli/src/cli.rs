@@ -34,6 +34,16 @@ pub(crate) enum Command {
         #[arg(long)]
         password_stdin: bool,
     },
+    Ui {
+        #[arg(long)]
+        broker: Option<String>,
+        #[arg(long)]
+        admin_token: Option<String>,
+        #[arg(long)]
+        port: Option<u16>,
+        #[arg(long)]
+        no_open: bool,
+    },
     Session {
         #[command(subcommand)]
         command: SessionCommand,

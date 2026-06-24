@@ -1094,7 +1094,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-audit"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1106,7 +1106,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-broker"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -1125,7 +1125,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-cli"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1147,7 +1147,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-config"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "gatebase-core",
@@ -1157,7 +1157,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "chrono",
  "serde",
@@ -1168,7 +1168,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-github"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1187,7 +1187,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-metadata"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1199,7 +1199,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-policy"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "gatebase-config",
  "gatebase-core",
@@ -1208,7 +1208,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-proxy-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "gatebase-config",
@@ -1219,7 +1219,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-proxy-mysql"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1238,7 +1238,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-proxy-postgres"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1257,7 +1257,7 @@ dependencies = [
 
 [[package]]
 name = "gatebase-session"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "argon2",

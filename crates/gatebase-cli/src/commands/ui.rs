@@ -96,12 +96,7 @@ async fn proxy(
             let status =
                 StatusCode::from_u16(response.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
             let body = response.bytes().await.unwrap_or_default();
-            (
-                status,
-                [(header::CONTENT_TYPE, "application/json")],
-                body,
-            )
-                .into_response()
+            (status, [(header::CONTENT_TYPE, "application/json")], body).into_response()
         }
         Err(error) => (StatusCode::BAD_GATEWAY, format!("broker error: {error}")).into_response(),
     }

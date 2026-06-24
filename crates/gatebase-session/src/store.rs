@@ -5,7 +5,9 @@ use chrono::Utc;
 use gatebase_core::{
     AccessToken, ActiveConnection, AuditEvent, RollbackArtifact, Session, SessionId, User, UserRole,
 };
-use gatebase_metadata::{ActivityEntry, AuditEventFilter, MetadataStore, PruneCutoffs, PruneResult};
+use gatebase_metadata::{
+    ActivityEntry, AuditEventFilter, MetadataStore, PruneCutoffs, PruneResult,
+};
 use rand_core::OsRng;
 use sha2::{Digest, Sha256};
 use std::path::Path;
@@ -132,11 +134,7 @@ impl SessionStore {
         Ok(user)
     }
 
-    pub async fn list_users(
-        &self,
-        limit: Option<u64>,
-        offset: Option<u64>,
-    ) -> Result<Vec<User>> {
+    pub async fn list_users(&self, limit: Option<u64>, offset: Option<u64>) -> Result<Vec<User>> {
         self.metadata.list_users(limit, offset).await
     }
 

@@ -162,11 +162,7 @@ impl MetadataStore {
             .transpose()
     }
 
-    pub async fn list_users(
-        &self,
-        limit: Option<u64>,
-        offset: Option<u64>,
-    ) -> Result<Vec<User>> {
+    pub async fn list_users(&self, limit: Option<u64>, offset: Option<u64>) -> Result<Vec<User>> {
         let mut query =
             entities::user::Entity::find().order_by_asc(entities::user::Column::Username);
         if let Some(limit) = limit {
@@ -291,8 +287,8 @@ impl MetadataStore {
         limit: Option<u64>,
         offset: Option<u64>,
     ) -> Result<Vec<Session>> {
-        let mut query = entities::session::Entity::find()
-            .order_by_desc(entities::session::Column::CreatedAt);
+        let mut query =
+            entities::session::Entity::find().order_by_desc(entities::session::Column::CreatedAt);
         if let Some(limit) = limit {
             query = query.limit(limit);
         }

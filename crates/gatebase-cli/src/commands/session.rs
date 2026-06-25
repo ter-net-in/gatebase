@@ -6,6 +6,7 @@ use gatebase_core::SessionId;
 use gatebase_session::{new_session, SessionIssuer, SessionStore};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::{IsTerminal, Write};
 
 #[derive(Debug, Serialize)]
 struct CreateSessionRequest {
@@ -87,10 +88,12 @@ async fn create_local(
     };
     println!("session_id {}", session.id);
     println!("expires_at {}", session.expires_at.to_rfc3339());
-    println!(
-        "connection_string {scheme}://{}:{}@{}:{}/{}",
+    let connection_string = format!(
+        "{scheme}://{}:{}@{}:{}/{}",
         session.actor, token, host, port, target.database
     );
+    println!("connection_string {connection_string}");
+    copy_connection_string_to_clipboard(&connection_string);
     Ok(())
 }
 
@@ -112,7 +115,20 @@ async fn create(broker: Option<String>, token: String) -> Result<()> {
     println!("session_id {}", response.session_id);
     println!("expires_at {}", response.expires_at);
     println!("connection_string {}", response.connection_string);
+    copy_connection_string_to_clipboard(&response.connection_string);
     Ok(())
+}
+
+fn copy_connection_string_to_clipboard(connection_string: &str) {
+    let mut stderr = std::io::stderr();
+    if !stderr.is_terminal() {
+        return;
+    }
+
+    use base64::Engine;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(connection_string);
+    let _ = write!(stderr, "\x1b]52;c;{encoded}\x07");
+    let _ = writeln!(stderr, "copied connection_string to clipboard");
 }
 
 async fn list(

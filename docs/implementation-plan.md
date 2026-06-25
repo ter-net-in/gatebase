@@ -9,7 +9,7 @@ Implemented:
 - Rust workspace with separated crates.
 - Apache-2.0 license.
 - SQLite-backed session and audit foundations.
-- CLI commands for broker, Postgres proxy, MySQL proxy, config check, saved default broker URL, token-backed sessions, local config-allowed sessions, and admin user management.
+- CLI commands for broker, Postgres proxy, MySQL proxy, config check, saved default broker URL, token-backed sessions, local config-allowed sessions, admin user management, self-update, and systemd unit installation.
 - Broker HTTP API with public token exchange, GitHub webhook intake, admin login, admin user management, admin maintenance pruning, and RBAC-protected session/audit endpoints.
 - SQLite-backed admin users with Argon2 password hashes and `viewer`, `operator`, `admin` roles.
 - GitHub provider trait and GitHub App implementation.
@@ -20,13 +20,15 @@ Implemented:
 - Postgres simple-query proxy with session auth, upstream forwarding, policy, audit, and TTL/revocation checks.
 - Proxies store active connections, proactively close active sessions on TTL expiry, and poll for revocation every second during idle and in-flight query handling.
 - MySQL text-query proxy MVP using `mysql_clear_password` for Gatebase session token auth, upstream forwarding, policy, audit, and TTL/revocation checks.
-- README, architecture, quickstart, and security docs.
+- README, architecture, CLI, quickstart, config, VPS, and security docs.
 - VPS deployment guide with systemd, reverse proxy, firewall, and operations notes.
 - Dockerfile and Docker Compose skeleton.
 - Docker Compose local demo config with bundled Postgres/MySQL targets and generated session key.
 - GitHub Actions CI for formatting, Clippy, tests, and `cargo audit`.
 - GitHub Actions release workflow that, on a version bump merged to `main`, tags the version, builds Linux/macOS binaries, publishes a GitHub Release, and pushes a multi-arch image to GHCR.
 - Opt-in Docker integration test covering Postgres and MySQL proxy happy path, policy blocking, and audit emission.
+- Rollback artifact capture for supported Postgres/MySQL `UPDATE` and `DELETE` statements, with generated inverse SQL for single-column primary-key predicates and CSV download of captured before rows in the web UI.
+- Web dashboard for sessions, audits, rollback detail, users, connections, and activity.
 
 Not implemented yet:
 
@@ -36,7 +38,10 @@ Not implemented yet:
 - Extended Postgres wire protocol.
 - Native MySQL password-plugin token auth; current MVP requires clear-password auth support.
 - Session disconnect audit reasons and cleaner upstream cancellation for long-running queries.
-- Rollback artifact generation.
+- Broad rollback support for compound predicates, composite keys, and unsafe/non-unique row identity.
+
+The phase list below is historical roadmap context; the current-state lists above
+are authoritative for what is already implemented.
 
 ## Phase 1: Real Postgres Proxy
 

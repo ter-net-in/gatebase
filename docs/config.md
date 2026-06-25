@@ -138,10 +138,10 @@ audit:
 
 ## `rollback`
 
-Optional rollback artifact capture for supported Postgres statements. When
-enabled, the Postgres proxy captures before-images for supported `UPDATE` and
-`DELETE` statements before forwarding them upstream, then writes a rollback
-artifact to the configured sinks.
+Optional rollback artifact capture for supported Postgres and MySQL statements.
+When enabled, proxies capture before-images for supported `UPDATE` and `DELETE`
+statements before forwarding them upstream, then write a rollback artifact to the
+configured sinks.
 
 | Field | Required | Default | Description |
 | --- | --- | --- | --- |
@@ -161,10 +161,13 @@ Artifact fields include `session_id`, `actor`, `target`, `engine`, original
 optional generated `inverse_sql`, `manual_required`, optional `reason`, and
 `created_at`.
 
-Generated inverse SQL is best-effort. Current automatic capture is limited to
-Postgres `UPDATE` and `DELETE` shapes with `WHERE <primary_key> IN (...)` on a
-single-column primary key. Unsupported shapes, composite/no primary key tables,
+Generated inverse SQL is best-effort. Current automatic inverse generation is
+limited to `UPDATE` and `DELETE` shapes with `WHERE <primary_key> IN (...)` or
+`WHERE <primary_key> = <value>` on a single-column primary key. Schema-qualified
+table names are supported. Unsupported shapes, composite/no primary key tables,
 or row counts over `max_rows` create artifacts with `manual_required: true`.
+Parseable manual artifacts can still include captured `before_rows`; the web UI
+can download those rows as CSV.
 
 Rollback sink write failures follow `audit.fail_closed`: when `true`, proxy query
 handling fails on sink write errors; when `false`, failures are logged and query

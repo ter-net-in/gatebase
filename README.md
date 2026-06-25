@@ -18,8 +18,9 @@ token for a normal connection string, and
 every query is policy-checked and audited on the way through.
 
 > **Status: early MVP.** The Postgres simple-query proxy, MySQL text-query proxy,
-> GitHub issue access tokens, and local config-allowed sessions work and are covered
-> by tests. The Postgres extended-query protocol, TLS, and native MySQL
+> GitHub issue access tokens, local config-allowed sessions, rollback artifacts,
+> web dashboard, self-update, and systemd unit generation work and are covered by
+> tests. The Postgres extended-query protocol, TLS, and native MySQL
 > password-plugin auth are not implemented yet. See [Status & roadmap](#status--roadmap).
 
 ## Contents
@@ -92,6 +93,12 @@ See [`docs/architecture.md`](docs/architecture.md) for more detail.
 Install system-wide: `curl -fsSL https://raw.githubusercontent.com/ter-net-in/gatebase/main/scripts/install.sh | sh`
 
 Uninstall: `curl -fsSL https://raw.githubusercontent.com/ter-net-in/gatebase/main/scripts/install.sh | sh -s -- --uninstall`
+
+Update an installed binary from the latest GitHub Release:
+
+```bash
+gatebase update
+```
 
 ## Quick start (local demo)
 
@@ -285,6 +292,7 @@ never forwarded upstream and are recorded as audit events.
 - **VPS / systemd** — [`docs/vps-setup.md`](docs/vps-setup.md) covers the full
   single-node setup: user and directories, secrets, config, systemd units,
   reverse proxy, firewall, and backups.
+- **Generated systemd units** — `gatebase systemd install --config /etc/gatebase/gatebase.yaml --enable --start` writes broker, Postgres proxy, and MySQL proxy units.
 - **Docker Compose** — `docker compose up --build` runs the local demo described
   above.
 - **Docker image** — the [`Dockerfile`](Dockerfile) builds a slim image with the
@@ -318,16 +326,17 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for contribution guidelines.
 
 **Working today:** broker with GitHub issue access tokens and local config-allowed sessions, Postgres
 simple-query proxy, MySQL text-query proxy (via `mysql_clear_password`), SQLite
-sessions and audit, SQL policy engine, TTL and revocation enforcement, and an
+sessions and audit, rollback artifact capture, web dashboard, SQL policy engine,
+TTL and revocation enforcement, CLI self-update, systemd unit generation, and an
 opt-in Docker E2E test suite.
 
 **Not implemented yet:** Postgres extended-query protocol, TLS, native MySQL
-password-plugin auth, GitHub installation-token caching, rollback artifact
-generation, and richer issue-token lifecycle controls.
+password-plugin auth, GitHub installation-token caching, and richer issue-token
+lifecycle controls.
 
 Gatebase does **not** guarantee universal rollback. Generated rollback artifacts
-are planned as best-effort and only safe for constrained DML; WAL/PITR remains the
-source of truth for recovery.
+are best-effort and only safe for constrained DML; WAL/PITR remains the source of
+truth for recovery.
 
 The full milestone breakdown lives in
 [`docs/implementation-plan.md`](docs/implementation-plan.md).

@@ -126,19 +126,19 @@ sequenceDiagram
     participant VPS as VPS
 
     CI->>CI: cargo build --release -p gatebase-cli
-    CI->>Release: upload gatebase-linux-amd64.tar.gz
+    CI->>Release: upload gatebase-<version>-x86_64-unknown-linux-gnu.tar.gz
     VPS->>Release: curl release artifact
-    VPS->>VPS: tar -xzf gatebase-linux-amd64.tar.gz
+    VPS->>VPS: tar -xzf gatebase-<version>-x86_64-unknown-linux-gnu.tar.gz
     VPS->>VPS: sudo install -m 0755 gatebase /usr/local/bin/gatebase
     VPS->>VPS: install config, secrets, systemd units
-    VPS->>VPS: systemctl enable --now gatebase-broker gatebase-proxy-postgres
+    VPS->>VPS: systemctl enable --now gatebase-broker gatebase-proxy-postgres gatebase-proxy-mysql
 ```
 
 Example install:
 
 ```bash
 curl -L -o gatebase.tar.gz \
-  https://github.com/<org>/<repo>/releases/download/v0.1.0/gatebase-linux-amd64.tar.gz
+  https://github.com/ter-net-in/gatebase/releases/download/v0.4.4/gatebase-0.4.4-x86_64-unknown-linux-gnu.tar.gz
 tar -xzf gatebase.tar.gz
 sudo install -m 0755 gatebase /usr/local/bin/gatebase
 ```
@@ -148,6 +148,13 @@ Manual copy also works:
 ```bash
 scp target/release/gatebase user@vps:/tmp/gatebase
 ssh user@vps 'sudo install -m 0755 /tmp/gatebase /usr/local/bin/gatebase'
+```
+
+Update an installed binary from GitHub Releases:
+
+```bash
+sudo /usr/local/bin/gatebase update
+sudo systemctl restart gatebase-broker gatebase-proxy-postgres gatebase-proxy-mysql
 ```
 
 ## Create User And Directories
@@ -282,6 +289,19 @@ printf 'change-me\n' | sudo -u gatebase /usr/local/bin/gatebase admin user creat
 ```
 
 ## systemd Units
+
+Quick install can generate all three units:
+
+```bash
+sudo /usr/local/bin/gatebase systemd install \
+  --config /etc/gatebase/gatebase.yaml \
+  --bin /usr/local/bin/gatebase \
+  --enable \
+  --start
+```
+
+The generated units are minimal. For production hardening and DB credential env
+files, use units like the examples below.
 
 Broker unit `/etc/systemd/system/gatebase-broker.service`:
 

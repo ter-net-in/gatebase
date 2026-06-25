@@ -39,11 +39,13 @@ The list endpoints (`sessions`, `audit/events`, `rollbacks`, `connections`, `act
 
 ## Web UI
 
-`gatebase ui` runs a local web server that serves a read-only dashboard and reverse-proxies its API calls to the broker, injecting the operator's saved bearer token. The browser never holds the token; the proxy forwards only `GET` requests on a fixed path allowlist and binds to localhost.
+`gatebase ui` runs a local web server that serves a read-only dashboard and reverse-proxies its API calls to the broker, injecting the operator's saved bearer token. The browser never holds the token; the proxy forwards only `GET` requests on a fixed path allowlist and binds to localhost. Rollback details show generated inverse SQL when available and can download captured `before_rows` as CSV.
 
 ## Proxy
 
 Proxy owns data-plane enforcement. Postgres simple-query and MySQL text-query paths validate Gatebase session tokens, enforce policy before forwarding statements, and write audit events.
+
+When rollback capture is enabled, both proxies record best-effort before-images for supported `UPDATE`/`DELETE` statements and link the rollback artifact from the audit event. Automatic inverse SQL is limited to single-column primary-key predicates; parseable manual artifacts can still include captured rows.
 
 Postgres extended query protocol, TLS, CancelRequest, and native MySQL password-plugin token auth remain future work.
 

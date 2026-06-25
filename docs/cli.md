@@ -23,6 +23,52 @@ Most commands take either `--config <path>` or `--broker <url>`:
 Set `RUST_LOG` to control CLI and service logging, for example
 `RUST_LOG=info gatebase broker --config examples/gatebase.yaml`.
 
+## `gatebase update`
+
+Downloads a release archive for the current platform from GitHub Releases and
+replaces the current `gatebase` executable. If the current executable is not
+writable, the command retries with `sudo install -m 0755`.
+
+```bash
+gatebase update
+gatebase update --version 0.4.4
+gatebase update --force
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `--version <version>` | No | Install a specific release version. Accepts `0.4.4` or `v0.4.4`. Defaults to latest release. |
+| `--force` | No | Reinstall even when the requested version matches the current binary. |
+
+Supported release archive names follow
+`gatebase-<version>-<target-triple>.tar.gz` for Linux and macOS targets built by
+the release workflow.
+
+## `gatebase systemd install`
+
+Writes three systemd service units for the current binary or a supplied binary:
+
+- `gatebase-broker.service`
+- `gatebase-proxy-postgres.service`
+- `gatebase-proxy-mysql.service`
+
+```bash
+gatebase systemd install --config /etc/gatebase/gatebase.yaml
+gatebase systemd install --config /etc/gatebase/gatebase.yaml --enable --start
+gatebase systemd install --config /etc/gatebase/gatebase.yaml --bin /usr/local/bin/gatebase
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `--config <path>` | Yes | Gatebase YAML config path used in each `ExecStart`. |
+| `--bin <path>` | No | Binary path for `ExecStart`. Defaults to the current executable. |
+| `--enable` | No | Run `systemctl enable` for all three units after install. |
+| `--start` | No | Run `systemctl start` for all three units after install. With `--enable`, uses `systemctl enable --now`. |
+
+The generated units are minimal `Type=simple` services. For hardened production
+units with `User=gatebase`, `EnvironmentFile=...`, and filesystem restrictions,
+see [`docs/vps-setup.md`](vps-setup.md).
+
 ## `gatebase broker`
 
 Runs the broker HTTP service. The broker validates issue signals, comments
@@ -313,6 +359,7 @@ Starts a local web server that serves the read-only dashboard and reverse-proxie
 its API calls to the broker, injecting your saved bearer token. The browser never
 sees the token. Views: sessions, audit events (with the linked rollback for each
 data-changing statement), active connections, users, and a unified activity log.
+Rollback details can download captured `before_rows` as CSV when available.
 
 ```bash
 gatebase login --username root      # saves the token first

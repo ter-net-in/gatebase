@@ -4,6 +4,7 @@ mod config;
 mod maintenance;
 mod proxy;
 mod session;
+mod systemd;
 mod ui;
 mod update;
 
@@ -29,6 +30,7 @@ pub(crate) async fn dispatch(cli: Cli) -> Result<()> {
             no_open,
         } => ui::run(broker, admin_token, port, no_open).await,
         Command::Update { version, force } => update::run(version, force).await,
+        Command::Systemd { command } => systemd::run(command).await,
         Command::Session { command } => session::run(command).await,
         Command::Audit { command } => audit::run(command).await,
         Command::Maintenance { command } => maintenance::run(command).await,

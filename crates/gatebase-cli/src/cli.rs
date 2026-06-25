@@ -50,6 +50,10 @@ pub(crate) enum Command {
         #[arg(long)]
         force: bool,
     },
+    Systemd {
+        #[command(subcommand)]
+        command: SystemdCommand,
+    },
     Session {
         #[command(subcommand)]
         command: SessionCommand,
@@ -206,5 +210,19 @@ pub(crate) enum MaintenanceCommand {
         admin_token: Option<String>,
         #[arg(long)]
         dry_run: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum SystemdCommand {
+    Install {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        bin: Option<PathBuf>,
+        #[arg(long)]
+        enable: bool,
+        #[arg(long)]
+        start: bool,
     },
 }

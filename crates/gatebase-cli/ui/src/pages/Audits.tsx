@@ -11,6 +11,37 @@ const input =
 
 const COLUMNS = ["Time", "Actor", "Target", "Engine", "Decision", "Rows", "Statement", "Rollback"];
 
+function csvCell(value: unknown): string {
+  const text =
+    value === null || value === undefined
+      ? ""
+      : typeof value === "object"
+        ? JSON.stringify(value)
+        : String(value);
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+function beforeRowsCsv(rows: Record<string, unknown>[]): string {
+  const columns = Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
+  const lines = [columns.map(csvCell).join(",")];
+  for (const row of rows) {
+    lines.push(columns.map((column) => csvCell(row[column])).join(","));
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function downloadBeforeRows(id: string, rows: Record<string, unknown>[]) {
+  const blob = new Blob([beforeRowsCsv(rows)], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `rollback-${id}-before-rows.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 function RollbackDetail({ auditId }: { auditId: string }) {
   const q = useQuery({
     queryKey: ["audit-rollback", auditId],
@@ -35,6 +66,11 @@ function RollbackDetail({ auditId }: { auditId: string }) {
                 <Badge tone="ok">auto-revertible</Badge>
               )}
               {q.data.table_name && <Badge tone="neutral">{q.data.table_name}</Badge>}
+              {q.data.before_rows.length > 0 && (
+                <Button onClick={() => downloadBeforeRows(q.data.id, q.data.before_rows)}>
+                  Download before rows CSV
+                </Button>
+              )}
             </div>
             <div>
               <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">

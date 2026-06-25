@@ -101,22 +101,10 @@ async fn build_supported_artifact(
         ));
     };
 
-    let primary_key = fetch_single_primary_key(upstream, table).await?;
-    if !ident_eq(where_column, &primary_key) {
-        return Ok(manual_artifact(
-            statement,
-            context,
-            Some(table),
-            Some(format!(
-                "WHERE column {where_column} is not primary key {primary_key}"
-            )),
-        ));
-    }
-
     let select = format!(
         "SELECT * FROM {} WHERE {} IN ({}) LIMIT {}",
         quote_ident(table),
-        quote_ident(&primary_key),
+        quote_ident(where_column),
         values.join(", "),
         context.config.max_rows + 1
     );
@@ -129,6 +117,32 @@ async fn build_supported_artifact(
             Some(format!(
                 "rollback row count exceeds max_rows {}",
                 context.config.max_rows
+            )),
+        ));
+    }
+
+    let primary_key = match fetch_single_primary_key(upstream, table).await {
+        Ok(primary_key) => primary_key,
+        Err(error) => {
+            return Ok(manual_artifact_with_rows(
+                statement,
+                context,
+                Some(table),
+                None,
+                rows,
+                Some(error.to_string()),
+            ));
+        }
+    };
+    if !ident_eq(where_column, &primary_key) {
+        return Ok(manual_artifact_with_rows(
+            statement,
+            context,
+            Some(table),
+            Some(primary_key.clone()),
+            rows,
+            Some(format!(
+                "WHERE column {where_column} is not primary key {primary_key}"
             )),
         ));
     }
@@ -419,6 +433,31 @@ fn manual_artifact(
         table: table.map(ToOwned::to_owned),
         primary_key_column: None,
         before_rows: Value::Array(Vec::new()),
+        inverse_sql: None,
+        manual_required: true,
+        reason,
+        created_at: Utc::now(),
+    }
+}
+
+fn manual_artifact_with_rows(
+    statement: &str,
+    context: &RollbackContext<'_>,
+    table: Option<&str>,
+    primary_key_column: Option<String>,
+    before_rows: Vec<Value>,
+    reason: Option<String>,
+) -> RollbackArtifact {
+    RollbackArtifact {
+        id: new_artifact_id(),
+        session_id: context.session.id.clone(),
+        actor: context.session.actor.clone(),
+        target: context.target.name.clone(),
+        engine: DbEngine::Postgres,
+        statement: statement.to_owned(),
+        table: table.map(ToOwned::to_owned),
+        primary_key_column,
+        before_rows: Value::Array(before_rows),
         inverse_sql: None,
         manual_required: true,
         reason,

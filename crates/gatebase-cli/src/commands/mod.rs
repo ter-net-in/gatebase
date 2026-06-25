@@ -5,6 +5,7 @@ mod maintenance;
 mod proxy;
 mod session;
 mod ui;
+mod update;
 
 use crate::cli::{Cli, Command};
 use anyhow::Result;
@@ -27,6 +28,7 @@ pub(crate) async fn dispatch(cli: Cli) -> Result<()> {
             port,
             no_open,
         } => ui::run(broker, admin_token, port, no_open).await,
+        Command::Update { version, force } => update::run(version, force).await,
         Command::Session { command } => session::run(command).await,
         Command::Audit { command } => audit::run(command).await,
         Command::Maintenance { command } => maintenance::run(command).await,

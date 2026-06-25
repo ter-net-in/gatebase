@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Debug, Deserialize)]
 pub struct AdminLoginRequest {
@@ -113,6 +114,7 @@ pub struct RollbackResponse {
     pub statement: String,
     pub table_name: Option<String>,
     pub primary_key_column: Option<String>,
+    pub before_rows: Value,
     pub inverse_sql: Option<String>,
     pub manual_required: bool,
     pub reason: Option<String>,

@@ -43,6 +43,7 @@ export interface Rollback {
   statement: string;
   table_name: string | null;
   primary_key_column: string | null;
+  before_rows: Record<string, unknown>[];
   inverse_sql: string | null;
   manual_required: boolean;
   reason: string | null;

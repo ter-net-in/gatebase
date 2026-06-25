@@ -44,6 +44,12 @@ pub(crate) enum Command {
         #[arg(long)]
         no_open: bool,
     },
+    Update {
+        #[arg(long)]
+        version: Option<String>,
+        #[arg(long)]
+        force: bool,
+    },
     Session {
         #[command(subcommand)]
         command: SessionCommand,

@@ -1,5 +1,6 @@
 mod auth;
 mod dto;
+mod error;
 mod handlers;
 mod routes;
 mod server;

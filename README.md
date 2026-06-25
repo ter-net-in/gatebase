@@ -138,6 +138,7 @@ The example config requires local files referenced by the YAML:
 
 ```bash
 mkdir -p tmp
+openssl rand -base64 32 > tmp/admin.key
 openssl rand -base64 32 > tmp/session.key
 touch tmp/github.pem
 export PG_UPSTREAM_USER=gatebase_service
@@ -237,8 +238,9 @@ Top-level sections:
 | Section | Purpose |
 | --- | --- |
 | `server` | `public_url` and `broker_listen` address; `public_url` host is the fallback target host in generated connection strings. |
+| `admin` | Admin API signing key settings. |
 | `metadata` | Metadata/audit/rollback store. Defaults to SQLite at `~/.gatebase/gatebase.db`; can use Postgres with `backend: "postgres"`. |
-| `sessions` | `default_ttl`, `max_ttl`, and `signing_key_file`. |
+| `sessions` | `default_ttl`, `max_ttl`, and database session `signing_key_file`. |
 | `github` | Optional GitHub App credentials (see below). |
 | `audit` | `fail_closed` flag and `sinks` (`sqlite`, `jsonl`). |
 | `rollback` | Optional before-image rollback artifact capture and sinks. |
@@ -285,7 +287,7 @@ policies:
 
 - `block` — operation classes that are rejected outright.
 - `require_where` — statements that must include a `WHERE` clause.
-- `max_rows_changed` — upper bound on affected rows for a single statement.
+- `max_rows_changed` — upper bound on affected rows for a single `INSERT`, `UPDATE`, or `DELETE`; matching statements run in a transaction and roll back if they exceed the limit.
 
 Multi-statement input is detected and blocked by default. Blocked statements are
 never forwarded upstream and are recorded as audit events.

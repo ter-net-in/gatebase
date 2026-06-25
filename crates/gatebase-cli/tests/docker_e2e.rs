@@ -73,7 +73,11 @@ async fn docker_postgres_and_mysql_proxy_e2e() -> anyhow::Result<()> {
     wait_for_postgres(pg_upstream_port).await?;
     wait_for_mysql(mysql_upstream_port).await?;
 
-    fs::write(temp.path().join("session.key"), "test-signing-secret")?;
+    fs::write(
+        temp.path().join("session.key"),
+        "test-session-signing-secret",
+    )?;
+    fs::write(temp.path().join("admin.key"), "test-admin-signing-secret")?;
     let config_path = write_config(
         temp.path(),
         broker_port,
@@ -467,12 +471,16 @@ fn write_config(
 ) -> anyhow::Result<PathBuf> {
     let sqlite_path = dir.join("gatebase.db");
     let signing_key_file = dir.join("session.key");
+    let admin_signing_key_file = dir.join("admin.key");
     let audit_path = dir.join("audit.jsonl");
     let rollback_path = dir.join("rollback.jsonl");
     let config = format!(
         r#"server:
   public_url: "http://127.0.0.1:{broker_port}"
   broker_listen: "127.0.0.1:{broker_port}"
+
+admin:
+  signing_key_file: "{}"
 
 metadata:
   backend: "sqlite"
@@ -540,6 +548,7 @@ policies:
       - "delete"
     max_rows_changed: 1000
 "#,
+        yaml_path(&admin_signing_key_file),
         yaml_path(&sqlite_path),
         yaml_path(&signing_key_file),
         yaml_path(&dir.join("github.pem")),

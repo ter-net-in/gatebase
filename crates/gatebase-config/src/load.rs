@@ -26,6 +26,12 @@ impl Config {
             !self.audit.sinks.is_empty(),
             "at least one audit sink is required"
         );
+        let default_ttl = self.sessions.default_ttl_minutes()?;
+        let max_ttl = self.sessions.max_ttl_minutes()?;
+        anyhow::ensure!(
+            default_ttl <= max_ttl,
+            "sessions default_ttl must be less than or equal to max_ttl"
+        );
         let metadata_url = self.metadata.effective_url();
         match self.metadata.backend {
             MetadataBackend::Sqlite => anyhow::ensure!(
@@ -55,6 +61,7 @@ impl Config {
                 "target {} requires issue signals or allow_cli_sessions",
                 target.name
             );
+            target.access.access_token_ttl_minutes()?;
             for signal in &target.access.required_signals {
                 match signal {
                     AccessSignal::GitHubIssueOpen => {}

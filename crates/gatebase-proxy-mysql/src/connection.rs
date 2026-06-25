@@ -214,6 +214,11 @@ async fn handle_query(
     }
 
     let rollback_artifact_id = capture_rollback_artifact(statement, upstream, rollback).await?;
+    let enforce_row_limit =
+        is_row_limited_mutation(statement) && context.policy.max_rows_changed.is_some();
+    if enforce_row_limit {
+        timeout(QUERY_TIMEOUT, upstream.query_drop("START TRANSACTION")).await??;
+    }
 
     match timeout(QUERY_TIMEOUT, upstream.query_iter(statement)).await {
         Ok(Ok(mut result)) => {
@@ -238,6 +243,27 @@ async fn handle_query(
             } else {
                 let affected_rows = result.affected_rows();
                 result.drop_result().await?;
+                if let Some(limit) = context.policy.max_rows_changed {
+                    if enforce_row_limit && affected_rows > limit {
+                        timeout(QUERY_TIMEOUT, upstream.query_drop("ROLLBACK")).await??;
+                        let message =
+                            format!("statement changed more than max_rows_changed {limit}");
+                        write_audit(
+                            context,
+                            statement,
+                            Decision::Blocked,
+                            Some(affected_rows as i64),
+                            Some(message.clone()),
+                            rollback_artifact_id,
+                        )
+                        .await?;
+                        write_err(stream, response_sequence, 1142, &message).await?;
+                        return Ok(());
+                    }
+                }
+                if enforce_row_limit {
+                    timeout(QUERY_TIMEOUT, upstream.query_drop("COMMIT")).await??;
+                }
                 write_ok(stream, response_sequence, affected_rows).await?;
                 write_audit(
                     context,
@@ -251,6 +277,9 @@ async fn handle_query(
             }
         }
         Ok(Err(error)) => {
+            if enforce_row_limit {
+                let _ = timeout(QUERY_TIMEOUT, upstream.query_drop("ROLLBACK")).await;
+            }
             let message = error.to_string();
             write_audit(
                 context,
@@ -264,6 +293,9 @@ async fn handle_query(
             write_err(stream, response_sequence, 1105, &message).await?;
         }
         Err(_) => {
+            if enforce_row_limit {
+                let _ = timeout(QUERY_TIMEOUT, upstream.query_drop("ROLLBACK")).await;
+            }
             let message = "upstream MySQL query timed out".to_owned();
             write_audit(
                 context,
@@ -278,6 +310,13 @@ async fn handle_query(
         }
     }
     Ok(())
+}
+
+fn is_row_limited_mutation(statement: &str) -> bool {
+    let normalized = statement.trim_start().to_ascii_lowercase();
+    normalized.starts_with("insert")
+        || normalized.starts_with("update")
+        || normalized.starts_with("delete")
 }
 
 #[derive(Debug, Clone, Copy)]

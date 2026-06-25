@@ -292,12 +292,15 @@ impl MetadataStore {
         else {
             return Ok(None);
         };
-        entities::access_token::Entity::update_many()
+        let result = entities::access_token::Entity::update_many()
             .col_expr(entities::access_token::Column::UsedAt, Expr::value(now))
             .filter(entities::access_token::Column::Id.eq(model.id.clone()))
             .filter(entities::access_token::Column::UsedAt.is_null())
             .exec(&self.db)
             .await?;
+        if result.rows_affected == 0 {
+            return Ok(None);
+        }
         model_to_access_token(model).map(Some)
     }
 

@@ -10,13 +10,14 @@ Postgres database shared by all Gatebase containers.
 - Kubernetes cluster with a default `StorageClass`, or set
   `persistence.storageClass`.
 - Helm 3.
-- A Kubernetes Secret containing the session signing key and upstream database
+- A Kubernetes Secret containing admin/session signing keys and upstream database
   credentials for production deployments.
 
 Create the production Secret:
 
 ```bash
 kubectl create secret generic gatebase-secrets \
+  --from-literal=admin.key="$(openssl rand -base64 32)" \
   --from-literal=session.key="$(openssl rand -base64 32)" \
   --from-literal=PG_UPSTREAM_USER="gatebase" \
   --from-literal=PG_UPSTREAM_PASSWORD="change-me"
@@ -28,12 +29,13 @@ Secret:
 ```bash
 kubectl create secret generic gatebase-secrets \
   --from-file=github-app.pem=./github-app.pem \
+  --from-literal=admin.key="$(openssl rand -base64 32)" \
   --from-literal=session.key="$(openssl rand -base64 32)" \
   --from-literal=PG_UPSTREAM_USER="gatebase" \
   --from-literal=PG_UPSTREAM_PASSWORD="change-me"
 ```
 
-The session key must be stable. Rotating it invalidates existing session tokens.
+The admin and session keys must be stable. Rotating the admin key invalidates admin API tokens; rotating the session key invalidates database session tokens.
 
 ## Minimal Values
 
@@ -42,7 +44,7 @@ Create `values.gatebase.yaml`:
 ```yaml
 image:
   repository: ghcr.io/ter-net-in/gatebase
-  tag: "0.4.5"
+  tag: "0.4.6"
 
 secrets:
   existingSecret: gatebase-secrets
@@ -74,6 +76,8 @@ config:
   server:
     public_url: "https://gatebase.example.com"
     broker_listen: "0.0.0.0:8080"
+  admin:
+    signing_key_file: "/etc/gatebase/secrets/admin.key"
   metadata:
     backend: "sqlite"
     url: "sqlite:///var/lib/gatebase/gatebase.db?mode=rwc"
@@ -175,6 +179,7 @@ To use external Postgres metadata instead, keep
 
 ```bash
 kubectl create secret generic gatebase-secrets \
+  --from-literal=admin.key="$(openssl rand -base64 32)" \
   --from-literal=session.key="$(openssl rand -base64 32)" \
   --from-literal=GATEBASE_METADATA_URL="postgres://gatebase:change-me@postgres.default.svc.cluster.local:5432/gatebase" \
   --from-literal=PG_UPSTREAM_USER="gatebase" \
@@ -214,9 +219,9 @@ upstream databases.
 
 ## Secrets And Rotation
 
-The chart can generate a demo `session.key` when `secrets.existingSecret` and
-`secrets.sessionKey` are empty. Production should always provide an existing
-Secret so upgrades do not change the key unexpectedly.
+The chart can generate demo `admin.key` and `session.key` values when
+`secrets.existingSecret`, `secrets.adminKey`, and `secrets.sessionKey` are empty.
+Production should always provide an existing Secret so upgrades do not change keys unexpectedly.
 
-Session key rotation invalidates existing session tokens. Plan a maintenance
-window until multi-key verification exists.
+Admin key rotation invalidates admin API tokens. Session key rotation invalidates
+database session tokens. Plan a maintenance window until multi-key verification exists.

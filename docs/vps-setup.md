@@ -7,6 +7,7 @@ This guide runs Gatebase on one Linux VPS with systemd. The broker API is expose
 ```text
 /usr/local/bin/gatebase
 /etc/gatebase/gatebase.yaml
+/etc/gatebase/admin.key
 /etc/gatebase/session.key
 /etc/gatebase/github-app.pem
 /var/lib/gatebase/gatebase.db
@@ -28,7 +29,7 @@ flowchart TD
     Artifact --> VPS[VPS installs artifact, no source checkout required]
 
     Admin[Operator] --> Config[/etc/gatebase/gatebase.yaml]
-    Admin --> Secrets[session.key, github-app.pem, DB credential env]
+    Admin --> Secrets[admin.key, session.key, github-app.pem, DB credential env]
     Config --> Systemd[systemd services]
     Secrets --> Systemd
 
@@ -138,7 +139,7 @@ Example install:
 
 ```bash
 curl -L -o gatebase.tar.gz \
-  https://github.com/ter-net-in/gatebase/releases/download/v0.4.5/gatebase-0.4.5-x86_64-unknown-linux-gnu.tar.gz
+  https://github.com/ter-net-in/gatebase/releases/download/v0.4.6/gatebase-0.4.6-x86_64-unknown-linux-gnu.tar.gz
 tar -xzf gatebase.tar.gz
 sudo install -m 0755 gatebase /usr/local/bin/gatebase
 ```
@@ -168,11 +169,14 @@ sudo chmod 0750 /etc/gatebase /var/lib/gatebase /var/log/gatebase
 
 ## Secrets
 
-Create session signing key:
+Create admin and session signing keys:
 
 ```bash
+sudo openssl rand -base64 32 | sudo tee /etc/gatebase/admin.key >/dev/null
 sudo openssl rand -base64 32 | sudo tee /etc/gatebase/session.key >/dev/null
+sudo chown root:gatebase /etc/gatebase/admin.key
 sudo chown root:gatebase /etc/gatebase/session.key
+sudo chmod 0640 /etc/gatebase/admin.key
 sudo chmod 0640 /etc/gatebase/session.key
 ```
 
@@ -207,6 +211,9 @@ Create `/etc/gatebase/gatebase.yaml`:
 server:
   public_url: "https://gatebase.example.com"
   broker_listen: "127.0.0.1:8080"
+
+admin:
+  signing_key_file: "/etc/gatebase/admin.key"
 
 metadata:
   backend: "sqlite"
@@ -284,7 +291,7 @@ sudo -u gatebase /usr/local/bin/gatebase config check --config /etc/gatebase/gat
 Broker and proxies may run on separate servers, but they are not independent
 control planes. They must share state and secrets:
 
-- Use the same `sessions.signing_key_file` content on broker and proxy hosts.
+- Use the same `sessions.signing_key_file` content on broker and proxy hosts. Keep `admin.signing_key_file` on broker hosts only; proxies do not need admin API tokens.
 - Use the same metadata store from broker and proxy hosts. Postgres metadata is recommended for split hosts. If you choose SQLite, all hosts need shared storage for the same SQLite file; separate local files will make broker-created sessions invisible to proxies.
 - Run proxy units only on hosts that can reach the upstream database.
 - Set each target's `public_host` and `public_port` to the client-reachable proxy address, not the broker URL.
@@ -296,11 +303,16 @@ server:
   public_url: "https://broker.example.com"
   broker_listen: "127.0.0.1:8080"
 
+admin:
+  signing_key_file: "/etc/gatebase/admin.key"
+
 metadata:
   backend: "postgres"
   url: "${GATEBASE_METADATA_URL}"
 
 sessions:
+  default_ttl: "15m"
+  max_ttl: "30m"
   signing_key_file: "/etc/gatebase/session.key"
 
 targets:

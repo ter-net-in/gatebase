@@ -43,7 +43,7 @@ The list endpoints (`sessions`, `audit/events`, `rollbacks`, `connections`, `act
 
 ## Proxy
 
-Proxy owns data-plane enforcement. Postgres simple-query and MySQL text-query paths validate Gatebase session tokens, enforce policy before forwarding statements, and write audit events.
+Proxy owns data-plane enforcement. Postgres simple-query and MySQL text-query paths validate Gatebase session tokens, enforce policy before forwarding statements, enforce `max_rows_changed` for supported mutations inside transactions, and write audit events.
 
 When rollback capture is enabled, both proxies record best-effort before-images for supported `UPDATE`/`DELETE` statements and link the rollback artifact from the audit event. Automatic inverse SQL is limited to single-column primary-key predicates; parseable manual artifacts can still include captured rows.
 
@@ -57,7 +57,7 @@ or approved client networks.
 
 Split deployment requirements:
 
-- Broker and proxies must use the same `sessions.signing_key_file` content so proxies can verify broker-issued session tokens.
+- Broker and proxies must use the same `sessions.signing_key_file` content so proxies can verify broker-issued database session tokens. Broker-only admin API tokens use `admin.signing_key_file` and are intentionally separate.
 - Broker and proxies must use the same metadata store. Postgres metadata is recommended for split hosts. SQLite metadata requires one shared SQLite file path on shared storage, or broker and proxy on the same host. If each server has its own local SQLite file, sessions and revocations do not propagate.
 - Proxy servers must reach the configured upstream databases.
 - Clients must reach target proxy `public_host` and `public_port` values returned in connection strings.

@@ -72,7 +72,14 @@ async fn create_local(
     let store = SessionStore::open_metadata(&config.metadata).await?;
     let signing_secret = fs::read(&config.sessions.signing_key_file)?;
     let issuer = SessionIssuer::new(&signing_secret);
-    let session = new_session(actor, "cli".to_owned(), None, None, target.name.clone(), 15);
+    let session = new_session(
+        actor,
+        "cli".to_owned(),
+        None,
+        None,
+        target.name.clone(),
+        config.sessions.default_ttl_minutes()?,
+    );
     store.create(&session).await?;
     let token = issuer.issue(&session)?;
     let host = target

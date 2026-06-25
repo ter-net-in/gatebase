@@ -2,6 +2,9 @@ server:
   public_url: "http://localhost:8080"
   broker_listen: "0.0.0.0:8080"
 
+admin:
+  signing_key_file: "/var/lib/gatebase/admin.key"
+
 metadata:
   backend: "sqlite"
   url: "sqlite:///var/lib/gatebase/gatebase.db?mode=rwc"

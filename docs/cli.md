@@ -31,13 +31,13 @@ writable, the command retries with `sudo install -m 0755`.
 
 ```bash
 gatebase update
-gatebase update --version 0.4.5
+gatebase update --version 0.4.6
 gatebase update --force
 ```
 
 | Flag | Required | Description |
 | --- | --- | --- |
-| `--version <version>` | No | Install a specific release version. Accepts `0.4.5` or `v0.4.5`. Defaults to latest release. |
+| `--version <version>` | No | Install a specific release version. Accepts `0.4.6` or `v0.4.6`. Defaults to latest release. |
 | `--force` | No | Reinstall even when the requested version matches the current binary. |
 
 Supported release archive names follow

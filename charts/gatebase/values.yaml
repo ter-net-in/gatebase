@@ -40,6 +40,7 @@ persistence:
 
 secrets:
   existingSecret: ""
+  adminKey: ""
   sessionKey: ""
   metadataUrl: ""
   githubPrivateKey: ""
@@ -91,6 +92,8 @@ config:
   server:
     public_url: "https://gatebase.example.com"
     broker_listen: "0.0.0.0:8080"
+  admin:
+    signing_key_file: "/etc/gatebase/secrets/admin.key"
   metadata:
     backend: "sqlite"
     url: "sqlite:///var/lib/gatebase/gatebase.db?mode=rwc"

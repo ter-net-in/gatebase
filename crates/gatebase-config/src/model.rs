@@ -5,6 +5,7 @@ use crate::defaults::{
     default_rollback_retention_days, default_session_retention_days,
 };
 use gatebase_core::{AccessSignal, DbEngine};
+use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -13,6 +14,7 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     pub server: ServerConfig,
+    pub admin: AdminConfig,
     #[serde(default)]
     pub metadata: MetadataConfig,
     pub sessions: SessionsConfig,
@@ -24,6 +26,11 @@ pub struct Config {
     pub retention: RetentionConfig,
     pub targets: Vec<TargetConfig>,
     pub policies: HashMap<String, PolicyConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AdminConfig {
+    pub signing_key_file: PathBuf,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -77,12 +84,22 @@ pub struct SessionsConfig {
     pub signing_key_file: PathBuf,
 }
 
+impl SessionsConfig {
+    pub fn default_ttl_minutes(&self) -> anyhow::Result<i64> {
+        parse_minutes(&self.default_ttl)
+    }
+
+    pub fn max_ttl_minutes(&self) -> anyhow::Result<i64> {
+        parse_minutes(&self.max_ttl)
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct GitHubConfig {
     pub app_id: String,
     pub installation_id: i64,
     pub private_key_file: PathBuf,
-    pub webhook_secret: String,
+    pub webhook_secret: SecretString,
     #[serde(default = "default_github_api_base_url")]
     pub api_base_url: String,
 }
@@ -180,14 +197,26 @@ pub struct TargetAccessConfig {
     pub required_signals: Vec<AccessSignal>,
 }
 
+impl TargetAccessConfig {
+    pub fn access_token_ttl_minutes(&self) -> anyhow::Result<i64> {
+        parse_minutes(&self.access_token_ttl)
+    }
+}
+
 fn default_access_token_ttl() -> String {
     "5m".to_owned()
+}
+
+fn parse_minutes(value: &str) -> anyhow::Result<i64> {
+    let minutes = value.strip_suffix('m').unwrap_or(value).parse::<i64>()?;
+    anyhow::ensure!(minutes > 0, "duration must be positive: {value}");
+    Ok(minutes)
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct CredentialsConfig {
     pub username: String,
-    pub password: String,
+    pub password: SecretString,
 }
 
 impl CredentialsConfig {
@@ -198,7 +227,7 @@ impl CredentialsConfig {
 
     #[must_use]
     pub fn password(&self) -> &str {
-        &self.password
+        self.password.expose_secret()
     }
 }
 

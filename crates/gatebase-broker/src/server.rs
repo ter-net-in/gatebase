@@ -6,15 +6,23 @@ use gatebase_core::AccessSignal;
 use gatebase_github::{GitHubAppConfig, GitHubProvider};
 use gatebase_session::{SessionIssuer, SessionStore};
 use jsonwebtoken::{DecodingKey, EncodingKey};
+use secrecy::ExposeSecret;
 use std::fs;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 
 pub async fn run(config: Config) -> Result<()> {
-    let signing_secret = fs::read(&config.sessions.signing_key_file).with_context(|| {
+    let session_signing_secret =
+        fs::read(&config.sessions.signing_key_file).with_context(|| {
+            format!(
+                "failed to read session signing key {}",
+                config.sessions.signing_key_file.display()
+            )
+        })?;
+    let admin_signing_secret = fs::read(&config.admin.signing_key_file).with_context(|| {
         format!(
-            "failed to read signing key {}",
-            config.sessions.signing_key_file.display()
+            "failed to read admin signing key {}",
+            config.admin.signing_key_file.display()
         )
     })?;
     let store = SessionStore::open_metadata(&config.metadata).await?;
@@ -32,7 +40,7 @@ pub async fn run(config: Config) -> Result<()> {
                 github.app_id.clone(),
                 github.installation_id,
                 &github.private_key_file,
-                github.webhook_secret.clone(),
+                github.webhook_secret.expose_secret().to_owned(),
                 github.api_base_url.clone(),
             )
             .await?,
@@ -44,9 +52,9 @@ pub async fn run(config: Config) -> Result<()> {
     let state = Arc::new(AppState {
         config: config.clone(),
         store,
-        issuer: SessionIssuer::new(&signing_secret),
-        admin_encoding_key: EncodingKey::from_secret(&signing_secret),
-        admin_decoding_key: DecodingKey::from_secret(&signing_secret),
+        issuer: SessionIssuer::new(&session_signing_secret),
+        admin_encoding_key: EncodingKey::from_secret(&admin_signing_secret),
+        admin_decoding_key: DecodingKey::from_secret(&admin_signing_secret),
         github,
     });
 

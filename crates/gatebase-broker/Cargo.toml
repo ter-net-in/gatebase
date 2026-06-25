@@ -16,6 +16,7 @@ gatebase-core = { path = "../gatebase-core" }
 gatebase-github = { path = "../gatebase-github" }
 gatebase-session = { path = "../gatebase-session" }
 jsonwebtoken.workspace = true
+secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

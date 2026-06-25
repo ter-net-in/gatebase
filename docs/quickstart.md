@@ -4,6 +4,7 @@ Create local files:
 
 ```bash
 mkdir -p tmp
+openssl rand -base64 32 > tmp/admin.key
 openssl rand -base64 32 > tmp/session.key
 touch tmp/github.pem
 ```

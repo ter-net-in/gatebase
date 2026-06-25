@@ -20,6 +20,6 @@ MySQL proxy MVP requires client-side clear-password support toward Gatebase so t
 
 ## Admin Users
 
-The first admin user is bootstrapped locally with `gatebase admin user create --config ... --role admin --password-stdin`. After bootstrap, broker admin APIs require login through `/api/admin/login` and enforce roles. User passwords are stored as Argon2 hashes in the metadata store.
+The first admin user is bootstrapped locally with `gatebase admin user create --config ... --role admin --password-stdin`. After bootstrap, broker admin APIs require login through `/api/admin/login` and enforce roles. Admin bearer tokens are signed with `admin.signing_key_file`, separate from database session tokens. Each authenticated request re-checks the metadata-backed user, so deleted or disabled users lose access even if a previously issued token has not expired. User passwords are stored as Argon2 hashes in the metadata store.
 
 Admin API roles are ordered `admin > operator > viewer`. `viewer` can read sessions and audit events, `operator` can also revoke sessions, and `admin` can manage users and run maintenance pruning.

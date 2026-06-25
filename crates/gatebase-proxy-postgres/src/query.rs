@@ -132,6 +132,11 @@ async fn handle_query_with_row_description(
     }
 
     let rollback_artifact_id = capture_rollback_artifact(statement, upstream, rollback).await?;
+    let enforce_row_limit =
+        is_row_limited_mutation(statement) && context.policy.max_rows_changed.is_some();
+    if enforce_row_limit {
+        timeout(IO_TIMEOUT, upstream.simple_query("BEGIN")).await??;
+    }
 
     match timeout(IO_TIMEOUT, upstream.simple_query(statement)).await {
         Ok(Ok(messages)) => {
@@ -149,6 +154,26 @@ async fn handle_query_with_row_description(
                     _ => {}
                 }
             }
+            if let Some(limit) = context.policy.max_rows_changed {
+                if enforce_row_limit && rows_affected.is_some_and(|rows| rows as u64 > limit) {
+                    timeout(IO_TIMEOUT, upstream.simple_query("ROLLBACK")).await??;
+                    let message = format!("statement changed more than max_rows_changed {limit}");
+                    write_audit(
+                        context,
+                        statement,
+                        Decision::Blocked,
+                        rows_affected,
+                        Some(message.clone()),
+                        rollback_artifact_id,
+                    )
+                    .await?;
+                    write_error(writer, "42501", &message).await?;
+                    return Ok(());
+                }
+            }
+            if enforce_row_limit {
+                timeout(IO_TIMEOUT, upstream.simple_query("COMMIT")).await??;
+            }
             write_audit(
                 context,
                 statement,
@@ -160,6 +185,9 @@ async fn handle_query_with_row_description(
             .await?;
         }
         Ok(Err(error)) => {
+            if enforce_row_limit {
+                let _ = timeout(IO_TIMEOUT, upstream.simple_query("ROLLBACK")).await;
+            }
             let message = error.to_string();
             write_audit(
                 context,
@@ -173,6 +201,9 @@ async fn handle_query_with_row_description(
             write_error(writer, "XX000", &message).await?;
         }
         Err(_) => {
+            if enforce_row_limit {
+                let _ = timeout(IO_TIMEOUT, upstream.simple_query("ROLLBACK")).await;
+            }
             let message = "upstream Postgres query timed out".to_owned();
             write_audit(
                 context,
@@ -187,4 +218,11 @@ async fn handle_query_with_row_description(
         }
     }
     Ok(())
+}
+
+fn is_row_limited_mutation(statement: &str) -> bool {
+    let normalized = statement.trim_start().to_ascii_lowercase();
+    normalized.starts_with("insert")
+        || normalized.starts_with("update")
+        || normalized.starts_with("delete")
 }

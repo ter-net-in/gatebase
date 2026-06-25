@@ -3,8 +3,8 @@
 Gatebase is configured with one YAML file. See
 [`../examples/gatebase.yaml`](../examples/gatebase.yaml) for a complete example.
 `gatebase config check --config <path>` loads this file and verifies it can be
-parsed. Current validation requires at least one target and at least one audit
-sink.
+parsed. Validation requires at least one target, at least one audit sink, valid
+duration fields, and `sessions.default_ttl <= sessions.max_ttl`.
 
 `gatebase config --broker <url>` writes CLI-only settings to
 `~/.config/gatebase/config.json`. It does not modify the Gatebase YAML file.
@@ -14,8 +14,9 @@ sink.
 | Section | Purpose |
 | --- | --- |
 | `server` | `public_url` and `broker_listen` address. |
+| `admin` | Admin API signing key settings. |
 | `metadata` | Metadata/audit/rollback store backend and URL. Defaults to SQLite at `~/.gatebase/gatebase.db`. |
-| `sessions` | `default_ttl`, `max_ttl`, and `signing_key_file`. |
+| `sessions` | `default_ttl`, `max_ttl`, and database session `signing_key_file`. |
 | `github` | Optional GitHub App credentials. |
 | `audit` | `fail_closed` flag and `sinks` (`sqlite`, `jsonl`). |
 | `rollback` | Optional before-image rollback artifact capture and sinks. |
@@ -83,15 +84,31 @@ choose SQLite, every process must use the same SQLite file on shared storage;
 separate local SQLite files will break session lookup, revocation,
 active-connection tracking, and audit/rollback visibility.
 
-## `sessions`
+## `admin`
 
-Session TTL and signing-key settings. The signing key is used to issue tokens
-that proxies verify when clients connect.
+Admin API token signing-key settings. This key is separate from session signing
+so admin tokens cannot be used as database session tokens.
 
 | Field | Required | Default | Description |
 | --- | --- | --- | --- |
-| `default_ttl` | Yes | None | Intended default session lifetime, written as a duration string such as `15m`. The MVP broker currently issues 15-minute sessions. |
-| `max_ttl` | Yes | None | Intended maximum session lifetime, written as a duration string such as `30m`. |
+| `signing_key_file` | Yes | None | Path to a secret key file used for admin API token signing and verification. |
+
+Example:
+
+```yaml
+admin:
+  signing_key_file: "/var/lib/gatebase/admin.key"
+```
+
+## `sessions`
+
+Session TTL and signing-key settings. The signing key is used to issue database
+session tokens that proxies verify when clients connect.
+
+| Field | Required | Default | Description |
+| --- | --- | --- | --- |
+| `default_ttl` | Yes | None | Default session lifetime, written as a duration string such as `15m`. |
+| `max_ttl` | Yes | None | Maximum session lifetime, written as a duration string such as `30m`; `default_ttl` must not exceed it. |
 | `signing_key_file` | Yes | None | Path to a secret key file used for session token signing and verification. |
 
 Example:
@@ -103,7 +120,7 @@ sessions:
   signing_key_file: "/var/lib/gatebase/session.key"
 ```
 
-Broker and proxies must read the same signing key content. On split servers,
+Broker and proxies must read the same session signing key content. On split servers,
 copy the key securely or mount it from the same secret store. Rotating this key
 invalidates existing session tokens unless every process is updated in a
 coordinated restart.
@@ -308,7 +325,7 @@ blocks.
 | --- | --- | --- | --- |
 | `block` | No | `[]` | SQL operation classes to always reject, for example `drop_table` or `truncate`. |
 | `require_where` | No | `[]` | SQL operation classes that must include a `WHERE` clause, usually `update` and `delete`. |
-| `max_rows_changed` | No | None | Maximum allowed affected rows for one statement when row counts are available. |
+| `max_rows_changed` | No | None | Maximum allowed affected rows for one supported mutation. Postgres simple-query and MySQL text-query `INSERT`, `UPDATE`, and `DELETE` statements run in a transaction and roll back if affected rows exceed this value. |
 
 Example:
 

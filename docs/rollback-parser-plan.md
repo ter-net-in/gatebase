@@ -105,7 +105,7 @@ Add unit tests in each `rollback.rs` (`#[cfg(test)]`) for the pure parser:
   checks during release prep.
 
 ## Release / deploy
-- Current workspace version is `0.4.5`.
+- Current workspace version is `0.4.6`.
 - Releases build Linux/macOS tarballs named
   `gatebase-<version>-<target-triple>.tar.gz`.
 - Servers can update with `gatebase update`, then restart the systemd services.

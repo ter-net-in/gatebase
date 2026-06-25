@@ -201,7 +201,7 @@ and examples.
 | `GET /api/sessions` | List sessions. Requires `viewer` or higher. |
 | `POST /api/sessions` | Create a session. Body: `{token}`. Returns `{session_id, expires_at, connection_string}`. |
 | `POST /api/sessions/{id}/revoke` | Revoke a session. Requires `operator` or higher. |
-| `GET /api/audit/events` | List audit events. Query params: `actor`, `target`, `decision`, `limit`, `offset`. Requires `viewer` or higher. |
+| `GET /api/audit/events` | List audit events. Query params: `actor`, `target`, `decision`, `search`, `limit`, `offset`. Requires `viewer` or higher. |
 | `GET /api/audit/events/{id}/rollback` | Rollback artifact linked to an audit event (`404` if none). Requires `viewer` or higher. |
 | `GET /api/rollbacks` | List rollback artifacts. Requires `viewer` or higher. |
 | `GET /api/connections` | List live connections. Requires `viewer` or higher. |

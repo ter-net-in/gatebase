@@ -85,6 +85,7 @@ pub struct AuditQuery {
     pub actor: Option<String>,
     pub target: Option<String>,
     pub decision: Option<String>,
+    pub search: Option<String>,
     pub limit: Option<u64>,
     pub offset: Option<u64>,
 }

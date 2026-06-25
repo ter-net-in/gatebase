@@ -76,6 +76,7 @@ export interface AuditFilters {
   actor?: string;
   target?: string;
   decision?: string;
+  search?: string;
   limit?: number;
   offset?: number;
 }
@@ -107,6 +108,7 @@ function qs(filters: AuditFilters): string {
   if (filters.actor) params.set("actor", filters.actor);
   if (filters.target) params.set("target", filters.target);
   if (filters.decision) params.set("decision", filters.decision);
+  if (filters.search) params.set("search", filters.search);
   if (filters.limit) params.set("limit", String(filters.limit));
   if (filters.offset) params.set("offset", String(filters.offset));
   const s = params.toString();

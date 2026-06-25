@@ -99,6 +99,7 @@ async fn list_from_config(
             actor,
             target,
             decision,
+            search: None,
             limit: Some(limit),
             offset: None,
         })

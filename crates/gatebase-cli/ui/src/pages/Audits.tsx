@@ -42,6 +42,14 @@ function downloadBeforeRows(id: string, rows: Record<string, unknown>[]) {
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
+function StatementPreview({ statement, error }: { statement: string; error: string | null }) {
+  return (
+    <div className="max-h-20 max-w-[36rem] overflow-hidden whitespace-pre-wrap break-words" title={error ?? undefined}>
+      {statement}
+    </div>
+  );
+}
+
 function RollbackDetail({ auditId }: { auditId: string }) {
   const q = useQuery({
     queryKey: ["audit-rollback", auditId],
@@ -122,6 +130,12 @@ export function Audits() {
         <>
           <input
             className={input}
+            placeholder="search SQL, actor, error"
+            value={draft.search ?? ""}
+            onChange={(e) => setDraft({ ...draft, search: e.target.value || undefined })}
+          />
+          <input
+            className={input}
             placeholder="actor"
             value={draft.actor ?? ""}
             onChange={(e) => setDraft({ ...draft, actor: e.target.value || undefined })}
@@ -168,7 +182,7 @@ export function Audits() {
                   </Cell>
                   <Cell>{e.rows_affected ?? "—"}</Cell>
                   <Cell mono>
-                    <span title={e.error ?? undefined}>{e.statement}</span>
+                    <StatementPreview statement={e.statement} error={e.error} />
                   </Cell>
                   <Cell>
                     {hasRollback ? (

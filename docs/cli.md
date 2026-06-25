@@ -271,9 +271,10 @@ gatebase audit list --config /etc/gatebase/gatebase.yaml --decision blocked --js
 | `--limit <n>` | No | Maximum events to return. Defaults to `100`. |
 | `--json` | No | Print JSON instead of tab-separated output. |
 
-The broker `GET /api/audit/events` endpoint also accepts an `offset` query
-parameter for pagination (used by the web UI); the CLI always requests from
-offset 0.
+The broker `GET /api/audit/events` endpoint also accepts `offset` for pagination
+and `search` for server-side text search across actor, target, engine, decision,
+statement, and error text (used by the web UI); the CLI always requests from
+offset 0 and does not expose `search` yet.
 
 Default output columns are tab-separated:
 

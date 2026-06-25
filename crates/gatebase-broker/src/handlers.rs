@@ -58,6 +58,7 @@ pub(crate) async fn list_audit_events(
             actor: query.actor,
             target: query.target,
             decision: query.decision,
+            search: query.search,
             limit: query.limit,
             offset: query.offset,
         })

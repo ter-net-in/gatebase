@@ -35,7 +35,7 @@ Broker owns issue access-signal evaluation, GitHub integration, one-time access 
 | `GET /api/admin/users`, `POST /api/admin/users` | admin | List / create users. |
 | `POST /api/admin/maintenance/prune` | admin | Prune old metadata. |
 
-The list endpoints (`sessions`, `audit/events`, `rollbacks`, `connections`, `activity`, `admin/users`) accept `limit` and `offset` query parameters for pagination; omitting them returns all rows. Each audit event carries the id of the rollback artifact captured for that statement, if any.
+The list endpoints (`sessions`, `audit/events`, `rollbacks`, `connections`, `activity`, `admin/users`) accept `limit` and `offset` query parameters for pagination; omitting them returns all rows. Audit events also accept `actor`, `target`, `decision`, and `search` filters; `search` matches actor, target, engine, decision, statement, and error text before pagination. Each audit event carries the id of the rollback artifact captured for that statement, if any.
 
 ## Web UI
 

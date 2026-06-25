@@ -9,8 +9,9 @@ use gatebase_core::{
     AccessToken, ActiveConnection, AuditEvent, RollbackArtifact, Session, SessionId, User,
 };
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, ConnectionTrait, Database, DatabaseConnection,
-    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Schema, Set, Statement,
+    sea_query::Expr, ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, Database,
+    DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Schema,
+    Set, Statement,
 };
 use std::path::Path;
 
@@ -35,6 +36,7 @@ pub struct AuditEventFilter {
     pub actor: Option<String>,
     pub target: Option<String>,
     pub decision: Option<String>,
+    pub search: Option<String>,
     pub limit: Option<u64>,
     pub offset: Option<u64>,
 }
@@ -391,6 +393,19 @@ impl MetadataStore {
         }
         if let Some(decision) = filter.decision {
             query = query.filter(entities::audit_event::Column::Decision.eq(decision));
+        }
+        if let Some(search) = filter.search.map(|search| search.trim().to_owned()) {
+            if !search.is_empty() {
+                query = query.filter(
+                    Condition::any()
+                        .add(entities::audit_event::Column::Actor.contains(&search))
+                        .add(entities::audit_event::Column::Target.contains(&search))
+                        .add(entities::audit_event::Column::Engine.contains(&search))
+                        .add(entities::audit_event::Column::Decision.contains(&search))
+                        .add(entities::audit_event::Column::Statement.contains(&search))
+                        .add(entities::audit_event::Column::Error.contains(&search)),
+                );
+            }
         }
         if let Some(limit) = filter.limit {
             query = query.limit(limit);

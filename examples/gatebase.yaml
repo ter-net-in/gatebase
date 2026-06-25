@@ -3,7 +3,8 @@ server:
   broker_listen: "127.0.0.1:8080"
 
 metadata:
-  sqlite_path: "./tmp/gatebase.db"
+  backend: "sqlite"
+  url: "sqlite://./tmp/gatebase.db?mode=rwc"
 
 sessions:
   default_ttl: "15m"
@@ -54,8 +55,8 @@ targets:
     upstream: "127.0.0.1:5432"
     database: "app"
     credentials:
-      username_env: "PG_UPSTREAM_USER"
-      password_env: "PG_UPSTREAM_PASSWORD"
+      username: "${PG_UPSTREAM_USER}"
+      password: "${PG_UPSTREAM_PASSWORD}"
 
 policies:
   default:

@@ -69,7 +69,7 @@ async fn create_local(
         "target {} does not allow local CLI sessions",
         target.name
     );
-    let store = SessionStore::open(&config.metadata.sqlite_path).await?;
+    let store = SessionStore::open_metadata(&config.metadata).await?;
     let signing_secret = fs::read(&config.sessions.signing_key_file)?;
     let issuer = SessionIssuer::new(&signing_secret);
     let session = new_session(actor, "cli".to_owned(), None, None, target.name.clone(), 15);
@@ -149,7 +149,7 @@ async fn list(
 
 async fn list_local(config: std::path::PathBuf) -> Result<()> {
     let config = Config::load(config)?;
-    let store = SessionStore::open(&config.metadata.sqlite_path).await?;
+    let store = SessionStore::open_metadata(&config.metadata).await?;
     for session in store.list(None, None).await? {
         println!(
             "{}\t{}\t{}\t{}\t{}\t{}",
@@ -224,7 +224,7 @@ async fn revoke(
 
 async fn revoke_local(config: std::path::PathBuf, id: String) -> Result<()> {
     let config = Config::load(config)?;
-    let store = SessionStore::open(&config.metadata.sqlite_path).await?;
+    let store = SessionStore::open_metadata(&config.metadata).await?;
     store.revoke(&SessionId::from(id.clone())).await?;
     println!("revoked {id}");
     Ok(())

@@ -17,7 +17,7 @@ pub async fn run(config: Config) -> Result<()> {
             config.sessions.signing_key_file.display()
         )
     })?;
-    let store = SessionStore::open(&config.metadata.sqlite_path).await?;
+    let store = SessionStore::open_metadata(&config.metadata).await?;
     let requires_github = config
         .targets
         .iter()

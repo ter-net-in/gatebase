@@ -10,8 +10,8 @@ use gatebase_core::{
 };
 use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, Database,
-    DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Schema,
-    Set, Statement,
+    DatabaseBackend, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect, Schema, Set, Statement,
 };
 use std::path::Path;
 
@@ -60,6 +60,14 @@ pub struct PruneResult {
 }
 
 impl MetadataStore {
+    pub async fn open(url: &str) -> Result<Self> {
+        if matches!(metadata_backend_from_url(url)?, DatabaseBackend::Sqlite) {
+            Self::open_sqlite_url(url).await
+        } else {
+            Self::open_database(url).await
+        }
+    }
+
     pub async fn open_sqlite(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         if let Some(parent) = path
@@ -79,6 +87,39 @@ impl MetadataStore {
             .with_context(|| format!("failed to open SQLite metadata store at {url}"))?;
         let store = Self { db };
         store.configure_sqlite().await?;
+        store.migrate().await?;
+        Ok(store)
+    }
+
+    pub async fn open_sqlite_url(url: &str) -> Result<Self> {
+        let normalized = normalize_sqlite_url(url)?;
+        if let Some(path) = sqlite_path_from_url(&normalized) {
+            if let Some(parent) = path
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+            {
+                tokio::fs::create_dir_all(parent).await.with_context(|| {
+                    format!(
+                        "failed to create SQLite metadata directory {}",
+                        parent.display()
+                    )
+                })?;
+            }
+        }
+        let db = Database::connect(&normalized)
+            .await
+            .with_context(|| format!("failed to open SQLite metadata store at {normalized}"))?;
+        let store = Self { db };
+        store.configure_sqlite().await?;
+        store.migrate().await?;
+        Ok(store)
+    }
+
+    pub async fn open_database(url: &str) -> Result<Self> {
+        let db = Database::connect(url)
+            .await
+            .with_context(|| "failed to open metadata store")?;
+        let store = Self { db };
         store.migrate().await?;
         Ok(store)
     }
@@ -115,21 +156,37 @@ impl MetadataStore {
         Ok(())
     }
 
-    /// Add a column to an existing SQLite table if it is not already present.
+    /// Add a column to an existing table if it is not already present.
     async fn ensure_column(&self, table: &str, column: &str, decl: &str) -> Result<()> {
         let backend = self.db.get_database_backend();
-        let rows = self
-            .db
-            .query_all(Statement::from_string(
-                backend,
-                format!("PRAGMA table_info({table});"),
-            ))
-            .await?;
-        let exists = rows.iter().any(|row| {
-            row.try_get::<String>("", "name")
-                .map(|name| name == column)
-                .unwrap_or(false)
-        });
+        let exists = match backend {
+            DatabaseBackend::Sqlite => {
+                let rows = self
+                    .db
+                    .query_all(Statement::from_string(
+                        backend,
+                        format!("PRAGMA table_info({table});"),
+                    ))
+                    .await?;
+                rows.iter().any(|row| {
+                    row.try_get::<String>("", "name")
+                        .map(|name| name == column)
+                        .unwrap_or(false)
+                })
+            }
+            DatabaseBackend::Postgres => {
+                let rows = self
+                    .db
+                    .query_all(Statement::from_sql_and_values(
+                        backend,
+                        "SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1 AND column_name = $2",
+                        [table.into(), column.into()],
+                    ))
+                    .await?;
+                !rows.is_empty()
+            }
+            _ => false,
+        };
         if !exists {
             self.db
                 .execute(Statement::from_string(
@@ -481,7 +538,11 @@ impl MetadataStore {
         offset: Option<u64>,
     ) -> Result<Vec<ActivityEntry>> {
         let backend = self.db.get_database_backend();
-        let sql = "\
+        let (limit_placeholder, offset_placeholder) = match backend {
+            DatabaseBackend::Postgres => ("$1", "$2"),
+            _ => ("?", "?"),
+        };
+        let sql = format!("\
             SELECT ts, category, actor, target, detail FROM (\
                 SELECT created_at AS ts, \
                     CASE WHEN decision = 'blocked' THEN 'audit_blocked' ELSE 'audit_allowed' END AS category, \
@@ -496,15 +557,14 @@ impl MetadataStore {
                     CASE WHEN disconnected_at IS NULL THEN 'conn_opened' ELSE 'conn_closed' END AS category, \
                     client_addr AS actor, target, session_id AS detail \
                 FROM active_connections\
-            ) ORDER BY ts DESC LIMIT ? OFFSET ?";
-        // SQLite treats LIMIT -1 as unbounded.
-        let limit = limit.map(|value| value as i64).unwrap_or(-1);
+            ) ORDER BY ts DESC LIMIT {limit_placeholder} OFFSET {offset_placeholder}");
+        let limit = limit.map(|value| value as i64).unwrap_or(i64::MAX);
         let offset = offset.unwrap_or(0) as i64;
         let rows = self
             .db
             .query_all(Statement::from_sql_and_values(
                 backend,
-                sql,
+                &sql,
                 [limit.into(), offset.into()],
             ))
             .await?;
@@ -541,7 +601,10 @@ impl MetadataStore {
             )
             .await?,
         };
-        if !dry_run && result.total() > 0 {
+        if !dry_run
+            && result.total() > 0
+            && matches!(self.db.get_database_backend(), DatabaseBackend::Sqlite)
+        {
             self.compact_sqlite().await?;
         }
         Ok(result)
@@ -571,6 +634,50 @@ impl MetadataStore {
         statement.if_not_exists();
         self.db.execute(backend.build(&statement)).await?;
         Ok(())
+    }
+}
+
+fn metadata_backend_from_url(url: &str) -> Result<DatabaseBackend> {
+    if url.starts_with("sqlite://") {
+        Ok(DatabaseBackend::Sqlite)
+    } else if url.starts_with("postgres://") || url.starts_with("postgresql://") {
+        Ok(DatabaseBackend::Postgres)
+    } else {
+        anyhow::bail!("unsupported metadata URL scheme")
+    }
+}
+
+fn normalize_sqlite_url(url: &str) -> Result<String> {
+    anyhow::ensure!(
+        url.starts_with("sqlite://"),
+        "SQLite metadata URL must start with sqlite://"
+    );
+    let Some(rest) = url.strip_prefix("sqlite://") else {
+        unreachable!();
+    };
+    let (path, query) = rest.split_once('?').unwrap_or((rest, ""));
+    let path = if let Some(stripped) = path.strip_prefix("~/") {
+        std::env::var_os("HOME")
+            .map(std::path::PathBuf::from)
+            .map(|home| home.join(stripped))
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| path.to_owned())
+    } else {
+        path.to_owned()
+    };
+    if query.is_empty() {
+        Ok(format!("sqlite://{path}"))
+    } else {
+        Ok(format!("sqlite://{path}?{query}"))
+    }
+}
+
+fn sqlite_path_from_url(url: &str) -> Option<std::path::PathBuf> {
+    let path = url.strip_prefix("sqlite://")?.split('?').next()?;
+    if path.is_empty() || path == ":memory:" {
+        None
+    } else {
+        Some(std::path::PathBuf::from(path))
     }
 }
 

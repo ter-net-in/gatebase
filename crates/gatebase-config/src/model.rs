@@ -1,8 +1,8 @@
 use crate::defaults::{
     default_active_connection_retention_days, default_approval_retention_days,
     default_audit_retention_days, default_broker_listen, default_fail_closed,
-    default_github_api_base_url, default_rollback_max_rows, default_rollback_retention_days,
-    default_session_retention_days, default_sqlite_path,
+    default_github_api_base_url, default_metadata_url, default_rollback_max_rows,
+    default_rollback_retention_days, default_session_retention_days,
 };
 use gatebase_core::{AccessSignal, DbEngine};
 use serde::Deserialize;
@@ -33,17 +33,40 @@ pub struct ServerConfig {
     pub broker_listen: SocketAddr,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MetadataBackend {
+    Sqlite,
+    Postgres,
+}
+
+impl Default for MetadataBackend {
+    fn default() -> Self {
+        Self::Sqlite
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct MetadataConfig {
-    #[serde(default = "default_sqlite_path")]
-    pub sqlite_path: PathBuf,
+    #[serde(default)]
+    pub backend: MetadataBackend,
+    #[serde(default = "default_metadata_url")]
+    pub url: String,
 }
 
 impl Default for MetadataConfig {
     fn default() -> Self {
         Self {
-            sqlite_path: default_sqlite_path(),
+            backend: MetadataBackend::Sqlite,
+            url: default_metadata_url(),
         }
+    }
+}
+
+impl MetadataConfig {
+    #[must_use]
+    pub fn effective_url(&self) -> String {
+        self.url.clone()
     }
 }
 
@@ -163,8 +186,20 @@ fn default_access_token_ttl() -> String {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct CredentialsConfig {
-    pub username_env: String,
-    pub password_env: String,
+    pub username: String,
+    pub password: String,
+}
+
+impl CredentialsConfig {
+    #[must_use]
+    pub fn username(&self) -> &str {
+        &self.username
+    }
+
+    #[must_use]
+    pub fn password(&self) -> &str {
+        &self.password
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]

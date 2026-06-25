@@ -475,7 +475,8 @@ fn write_config(
   broker_listen: "127.0.0.1:{broker_port}"
 
 metadata:
-  sqlite_path: "{}"
+  backend: "sqlite"
+  url: "sqlite://{}?mode=rwc"
 
 sessions:
   default_ttl: "15m"
@@ -513,8 +514,8 @@ targets:
     upstream: "127.0.0.1:{pg_upstream_port}"
     database: "app"
     credentials:
-      username_env: "PG_UPSTREAM_USER"
-      password_env: "PG_UPSTREAM_PASSWORD"
+      username: "${{PG_UPSTREAM_USER}}"
+      password: "${{PG_UPSTREAM_PASSWORD}}"
   - name: "prod-mysql"
     engine: "mysql"
     access:
@@ -524,8 +525,8 @@ targets:
     upstream: "127.0.0.1:{mysql_upstream_port}"
     database: "app"
     credentials:
-      username_env: "MYSQL_UPSTREAM_USER"
-      password_env: "MYSQL_UPSTREAM_PASSWORD"
+      username: "${{MYSQL_UPSTREAM_USER}}"
+      password: "${{MYSQL_UPSTREAM_PASSWORD}}"
 
 policies:
   default:

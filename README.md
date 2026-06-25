@@ -19,8 +19,9 @@ every query is policy-checked and audited on the way through.
 
 > **Status: early MVP.** The Postgres simple-query proxy, MySQL text-query proxy,
 > GitHub issue access tokens, local config-allowed sessions, rollback artifacts,
-> web dashboard, self-update, systemd unit generation, and Kubernetes Helm chart
-> are implemented. The Postgres extended-query protocol, TLS, and native MySQL
+> web dashboard, selectable SQLite/Postgres metadata storage, self-update,
+> systemd unit generation, and Kubernetes Helm chart are implemented. The
+> Postgres extended-query protocol, TLS, and native MySQL
 > password-plugin auth are not implemented yet. See [Status & roadmap](#status--roadmap).
 
 ## Contents
@@ -47,9 +48,9 @@ every query is policy-checked and audited on the way through.
   signals pass — for now, GitHub issue open state and required labels.
 - **Short-lived by default.** Sessions default to 15 minutes. The proxy closes
   connections when the session expires or is revoked.
-- **Audited.** Every allowed and blocked statement is written to SQLite and
-  optional JSONL sinks, with actor, target, decision, and reason.
-- **Admin RBAC.** Broker admin APIs use SQLite-backed users with `viewer`,
+- **Audited.** Every allowed and blocked statement is written to the metadata
+  store and optional JSONL sinks, with actor, target, decision, and reason.
+- **Admin RBAC.** Broker admin APIs use metadata-backed users with `viewer`,
   `operator`, and `admin` roles.
 - **Policy enforcement.** High-risk SQL (`DROP`, `TRUNCATE`, `ALTER SYSTEM`,
   unscoped `UPDATE`/`DELETE`, and more) is blocked before it reaches the upstream.
@@ -69,7 +70,7 @@ incomplete.
 1. Developer opens an issue in the target access repo
 2. Gatebase webhook validates issue signals and comments a one-time token
 3. Developer exchanges the token for a short-lived session
-        -> SQLite stores the access token, session, and active connections
+        -> metadata store records the access token, session, and active connections
         -> developer receives a connection string
 4. Developer connects through the Postgres/MySQL proxy
         -> proxy validates the session (exists, not expired, not revoked)
@@ -84,7 +85,7 @@ Gatebase has three runtime parts, all shipped in one binary:
 | --- | --- |
 | **Broker** | Evaluates issue access signals, comments one-time tokens, integrates with GitHub, issues sessions, and enforces admin API RBAC. Exposes the HTTP API. |
 | **Proxy** | Data-plane enforcement. Validates session tokens, applies SQL policy, writes audit events, forwards to the upstream database. |
-| **SQLite store** | Access tokens, sessions, active connections, audit events, rollback artifacts, and admin users. |
+| **Metadata store** | SQLite by default, or Postgres by config. Stores access tokens, sessions, active connections, audit events, rollback artifacts, and admin users. |
 
 See [`docs/architecture.md`](docs/architecture.md) for more detail.
 
@@ -139,6 +140,8 @@ The example config requires local files referenced by the YAML:
 mkdir -p tmp
 openssl rand -base64 32 > tmp/session.key
 touch tmp/github.pem
+export PG_UPSTREAM_USER=gatebase_service
+export PG_UPSTREAM_PASSWORD=change-me
 ```
 
 ### Requesting a session
@@ -234,7 +237,7 @@ Top-level sections:
 | Section | Purpose |
 | --- | --- |
 | `server` | `public_url` and `broker_listen` address; `public_url` host is the fallback target host in generated connection strings. |
-| `metadata` | Optional `sqlite_path` for the metadata/audit store. Defaults to `~/.gatebase/gatebase.db`. |
+| `metadata` | Metadata/audit/rollback store. Defaults to SQLite at `~/.gatebase/gatebase.db`; can use Postgres with `backend: "postgres"`. |
 | `sessions` | `default_ttl`, `max_ttl`, and `signing_key_file`. |
 | `github` | Optional GitHub App credentials (see below). |
 | `audit` | `fail_closed` flag and `sinks` (`sqlite`, `jsonl`). |
@@ -243,9 +246,9 @@ Top-level sections:
 | `targets` | Database targets: engine, listen address, upstream, credentials. |
 | `policies` | Named SQL policies (see [SQL policy](#sql-policy)). |
 
-Upstream database credentials are read from environment variables named by
-`credentials.username_env` and `credentials.password_env`, never stored in the
-config file.
+Any string value can reference environment variables with `${VAR}`. This is the
+recommended way to inject metadata URLs, GitHub secrets, and upstream database
+credentials without storing secrets directly in YAML.
 
 ## Access signals
 
@@ -293,8 +296,9 @@ never forwarded upstream and are recorded as audit events.
   single-node setup: user and directories, secrets, config, systemd units,
   reverse proxy, firewall, and backups.
 - **Split broker/proxy hosts** — broker and proxies can run on different servers
-  when they share the session signing key and metadata SQLite database. Configure
-  target `public_host`/`public_port` to point at the proxy host. See
+  when they share the session signing key and metadata store. Postgres metadata
+  is recommended for split hosts; SQLite requires a shared database file.
+  Configure target `public_host`/`public_port` to point at the proxy host. See
   [`docs/vps-setup.md`](docs/vps-setup.md#broker-and-proxy-on-different-servers).
 - **Generated systemd units** — `gatebase systemd install --config /etc/gatebase/gatebase.yaml --enable --start` writes broker, Postgres proxy, and MySQL proxy units.
 - **Docker Compose** — `docker compose up --build` runs the local demo described
@@ -333,7 +337,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for contribution guidelines.
 
 **Working today:** broker with GitHub issue access tokens and local config-allowed
 sessions, admin RBAC, Postgres simple-query proxy, MySQL text-query proxy (via
-`mysql_clear_password`), SQLite sessions/audit/rollback storage, active
+`mysql_clear_password`), SQLite or Postgres sessions/audit/rollback storage, active
 connection tracking, rollback artifact capture for supported DML, web dashboard,
 SQL policy engine, TTL and revocation enforcement, maintenance pruning, CLI
 self-update, systemd unit generation, Docker image/Compose demo, Kubernetes Helm

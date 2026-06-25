@@ -1,8 +1,9 @@
 # Kubernetes Deployment
 
 Gatebase ships a Helm chart in [`../charts/gatebase`](../charts/gatebase). The
-chart runs the broker and enabled database proxies in one pod so they share the
-same SQLite metadata store safely with a `ReadWriteOnce` volume.
+chart runs the broker and enabled database proxies in one pod by default. SQLite
+metadata uses a `ReadWriteOnce` volume; Postgres metadata can use an external
+Postgres database shared by all Gatebase containers.
 
 ## Requirements
 
@@ -41,7 +42,7 @@ Create `values.gatebase.yaml`:
 ```yaml
 image:
   repository: ghcr.io/ter-net-in/gatebase
-  tag: "0.4.4"
+  tag: "0.4.5"
 
 secrets:
   existingSecret: gatebase-secrets
@@ -74,7 +75,8 @@ config:
     public_url: "https://gatebase.example.com"
     broker_listen: "0.0.0.0:8080"
   metadata:
-    sqlite_path: "/var/lib/gatebase/gatebase.db"
+    backend: "sqlite"
+    url: "sqlite:///var/lib/gatebase/gatebase.db?mode=rwc"
   sessions:
     default_ttl: "15m"
     max_ttl: "30m"
@@ -101,8 +103,8 @@ config:
       upstream: "postgres.default.svc.cluster.local:5432"
       database: "app"
       credentials:
-        username_env: "PG_UPSTREAM_USER"
-        password_env: "PG_UPSTREAM_PASSWORD"
+        username: "${PG_UPSTREAM_USER}"
+        password: "${PG_UPSTREAM_PASSWORD}"
   policies:
     default:
       block:
@@ -141,7 +143,7 @@ curl https://gatebase.example.com/healthz
 curl https://gatebase.example.com/readyz
 ```
 
-Current readiness checks broker HTTP availability. SQLite dependency checks are
+Current readiness checks broker HTTP availability. Metadata dependency checks are
 future hardening work.
 
 ## Proxy Access
@@ -161,11 +163,34 @@ kubectl port-forward svc/gatebase-postgres 15432:15432
 The chart stores Gatebase metadata and JSONL audit/rollback files on one PVC at
 `/var/lib/gatebase`.
 
-Back up the PVC like other security records. SQLite contains sessions, active
-connections, audit events, rollback artifacts, access tokens, and admin users.
+Back up the PVC like other security records when using SQLite metadata. SQLite
+contains sessions, active connections, audit events, rollback artifacts, access
+tokens, and admin users.
 
 The chart defaults to one pod replica and `Recreate` rollout strategy. Do not
 scale Gatebase horizontally while SQLite is the metadata store.
+
+To use external Postgres metadata instead, keep
+`GATEBASE_METADATA_URL` in the Secret and override only the metadata block:
+
+```bash
+kubectl create secret generic gatebase-secrets \
+  --from-literal=session.key="$(openssl rand -base64 32)" \
+  --from-literal=GATEBASE_METADATA_URL="postgres://gatebase:change-me@postgres.default.svc.cluster.local:5432/gatebase" \
+  --from-literal=PG_UPSTREAM_USER="gatebase" \
+  --from-literal=PG_UPSTREAM_PASSWORD="change-me"
+```
+
+```yaml
+config:
+  metadata:
+    backend: "postgres"
+    url: "${GATEBASE_METADATA_URL}"
+```
+
+With Postgres metadata, the PVC is still needed if JSONL audit or rollback sinks
+write to `/var/lib/gatebase`; otherwise it can be disabled with
+`persistence.enabled=false`.
 
 ## NetworkPolicy
 

@@ -46,3 +46,7 @@ pub(crate) fn default_sqlite_path() -> PathBuf {
         .join(".gatebase")
         .join("gatebase.db")
 }
+
+pub(crate) fn default_metadata_url() -> String {
+    format!("sqlite://{}?mode=rwc", default_sqlite_path().display())
+}

@@ -1,12 +1,9 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use gatebase_config::TargetConfig;
-use std::env;
 
 pub(crate) fn upstream_config(target: &TargetConfig) -> Result<String> {
-    let username = env::var(&target.credentials.username_env)
-        .with_context(|| format!("missing {}", target.credentials.username_env))?;
-    let password = env::var(&target.credentials.password_env)
-        .with_context(|| format!("missing {}", target.credentials.password_env))?;
+    let username = target.credentials.username();
+    let password = target.credentials.password();
     let (host, port) = split_host_port(&target.upstream);
     let mut config = format!(
         "host={} dbname={} user={} password={}",

@@ -14,7 +14,7 @@ sink.
 | Section | Purpose |
 | --- | --- |
 | `server` | `public_url` and `broker_listen` address. |
-| `metadata` | Optional `sqlite_path` for the metadata/audit store. Defaults to `~/.gatebase/gatebase.db`. |
+| `metadata` | Metadata/audit/rollback store backend and URL. Defaults to SQLite at `~/.gatebase/gatebase.db`. |
 | `sessions` | `default_ttl`, `max_ttl`, and `signing_key_file`. |
 | `github` | Optional GitHub App credentials. |
 | `audit` | `fail_closed` flag and `sinks` (`sqlite`, `jsonl`). |
@@ -23,9 +23,10 @@ sink.
 | `targets` | Database targets: engine, listen address, upstream, credentials. |
 | `policies` | Named SQL policies. |
 
-Upstream database credentials are read from environment variables named by
-`credentials.username_env` and `credentials.password_env`, never stored in the
-config file.
+Any YAML string can reference environment variables with `${VAR}`. Gatebase
+expands those references before parsing the config and fails startup if a
+referenced variable is missing or empty. Use this for secrets such as metadata
+Postgres URLs, GitHub webhook secrets, and upstream database credentials.
 
 ## `server`
 
@@ -46,29 +47,41 @@ server:
 
 ## `metadata`
 
-SQLite metadata store location. Gatebase stores sessions, access tokens,
-active connections, SQLite audit events, rollback artifacts, and admin users here.
+Metadata store location. Gatebase stores sessions, access tokens, active
+connections, audit events, rollback artifacts, and admin users here. SQLite is
+the default single-node backend; Postgres is recommended when broker and proxy
+processes run on different hosts or when Kubernetes storage should not depend on
+a shared SQLite file.
 
 | Field | Required | Default | Description |
 | --- | --- | --- | --- |
-| `sqlite_path` | No | `~/.gatebase/gatebase.db` | Path to the SQLite database file. Parent directory is created when config loads and must be writable by the broker and proxy processes. |
+| `backend` | No | `sqlite` | Metadata backend. Accepted values are `sqlite` and `postgres`. |
+| `url` | No | `sqlite://~/.gatebase/gatebase.db?mode=rwc` | Metadata database URL. Use `sqlite://...` for SQLite or `postgres://...` / `postgresql://...` for Postgres. Supports `${VAR}` expansion. |
 
 Example:
 
 ```yaml
 metadata:
-  sqlite_path: "/var/lib/gatebase/gatebase.db"
+  backend: "sqlite"
+  url: "sqlite:///var/lib/gatebase/gatebase.db?mode=rwc"
 ```
 
-If `metadata` or `metadata.sqlite_path` is omitted, Gatebase uses
-`~/.gatebase/gatebase.db`. Broker and proxy processes must resolve this to the
-same file. With systemd, `~` belongs to the service user, not the admin invoking
-commands.
+Postgres metadata example:
 
-For broker/proxy split-server deployments, the metadata path must still point to
-the same SQLite database from every host. Gatebase currently has no remote
-metadata service; separate local SQLite files will break session lookup,
-revocation, active-connection tracking, and SQLite audit/rollback visibility.
+```yaml
+metadata:
+  backend: "postgres"
+  url: "${GATEBASE_METADATA_URL}"
+```
+
+If `metadata` is omitted, Gatebase uses SQLite at
+`~/.gatebase/gatebase.db`. With systemd, `~` belongs to the service user, not
+the admin invoking commands.
+
+For broker/proxy split-server deployments, Postgres metadata is preferred. If you
+choose SQLite, every process must use the same SQLite file on shared storage;
+separate local SQLite files will break session lookup, revocation,
+active-connection tracking, and audit/rollback visibility.
 
 ## `sessions`
 
@@ -132,7 +145,7 @@ Supported sink types:
 
 | Sink | Fields | Description |
 | --- | --- | --- |
-| `type: "sqlite"` | None | Writes audit events to the metadata SQLite database. |
+| `type: "sqlite"` | None | Writes audit events to the configured metadata store. |
 | `type: "jsonl"` | `path` | Appends audit events to a JSONL file at `path`. |
 
 Example:
@@ -163,7 +176,7 @@ Supported sink types:
 
 | Sink | Fields | Description |
 | --- | --- | --- |
-| `type: "sqlite"` | None | Writes rollback artifacts to the metadata SQLite database. |
+| `type: "sqlite"` | None | Writes rollback artifacts to the configured metadata store. |
 | `type: "jsonl"` | `path` | Appends rollback artifacts to a JSONL file at `path`. |
 
 Artifact fields include `session_id`, `actor`, `target`, `engine`, original
@@ -232,8 +245,9 @@ Then prune:
 gatebase maintenance prune --config examples/gatebase.yaml
 ```
 
-After deleting rows, prune runs a WAL checkpoint and `VACUUM` so SQLite can
-release disk space.
+After deleting rows on SQLite, prune runs a WAL checkpoint and `VACUUM` so
+SQLite can release disk space. Postgres metadata relies on normal Postgres
+maintenance.
 
 ## `targets`
 
@@ -257,8 +271,8 @@ port clients receive from the broker in generated connection strings.
 | `public_port` | No | `listen` port | Port placed in broker-generated connection strings. Useful behind load balancers or port mappings. |
 | `upstream` | Yes | None | Upstream database socket address the proxy forwards allowed queries to. |
 | `database` | Yes | None | Database name included in generated connection strings and upstream connection setup. |
-| `credentials.username_env` | Yes | None | Environment variable containing upstream database username. |
-| `credentials.password_env` | Yes | None | Environment variable containing upstream database password. |
+| `credentials.username` | Yes | None | Upstream database username. Use `${VAR}` to read from the environment. |
+| `credentials.password` | Yes | None | Upstream database password. Use `${VAR}` to read from the environment. |
 
 Example:
 
@@ -280,8 +294,8 @@ targets:
     upstream: "10.0.0.10:5432"
     database: "app"
     credentials:
-      username_env: "PG_UPSTREAM_USER"
-      password_env: "PG_UPSTREAM_PASSWORD"
+      username: "${PG_UPSTREAM_USER}"
+      password: "${PG_UPSTREAM_PASSWORD}"
 ```
 
 ## `policies`

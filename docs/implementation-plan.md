@@ -8,10 +8,10 @@ Implemented:
 
 - Rust workspace with separated crates.
 - Apache-2.0 license.
-- SQLite-backed session and audit foundations.
+- SQLite/Postgres metadata-backed session and audit foundations.
 - CLI commands for broker, Postgres proxy, MySQL proxy, config check, saved default broker URL, token-backed sessions, local config-allowed sessions, admin user management, self-update, and systemd unit installation.
 - Broker HTTP API with public token exchange, GitHub webhook intake, admin login, admin user management, admin maintenance pruning, and RBAC-protected session/audit endpoints.
-- SQLite-backed admin users with Argon2 password hashes and `viewer`, `operator`, `admin` roles.
+- Metadata-backed admin users with Argon2 password hashes and `viewer`, `operator`, `admin` roles.
 - GitHub provider trait and GitHub App implementation.
 - Target-owned access signal policy for GitHub issues and optional `allow_cli_sessions`.
 - GitHub App provider creates RS256 App JWTs, fetches installation tokens, verifies webhook HMAC signatures, evaluates issue-open/label signals, comments one-time tokens, and closes approved issues.

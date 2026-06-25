@@ -132,6 +132,12 @@ spec:
       name: {{ include "gatebase.secretName" . }}
       key: PG_UPSTREAM_USER
       optional: true
+- name: GATEBASE_METADATA_URL
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "gatebase.secretName" . }}
+      key: GATEBASE_METADATA_URL
+      optional: true
 - name: PG_UPSTREAM_PASSWORD
   valueFrom:
     secretKeyRef:

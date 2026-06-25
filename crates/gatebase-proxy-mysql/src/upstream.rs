@@ -1,18 +1,15 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use gatebase_config::TargetConfig;
 use mysql_async::OptsBuilder;
-use std::env;
 
 pub(crate) fn upstream_opts(target: &TargetConfig) -> Result<OptsBuilder> {
-    let username = env::var(&target.credentials.username_env)
-        .with_context(|| format!("missing {}", target.credentials.username_env))?;
-    let password = env::var(&target.credentials.password_env)
-        .with_context(|| format!("missing {}", target.credentials.password_env))?;
+    let username = target.credentials.username();
+    let password = target.credentials.password();
     let (host, port) = split_host_port(&target.upstream);
     let mut builder = OptsBuilder::default()
         .ip_or_hostname(host.to_owned())
-        .user(Some(username))
-        .pass(Some(password))
+        .user(Some(username.to_owned()))
+        .pass(Some(password.to_owned()))
         .db_name(Some(target.database.clone()));
     if let Some(port) = port {
         builder = builder.tcp_port(port);

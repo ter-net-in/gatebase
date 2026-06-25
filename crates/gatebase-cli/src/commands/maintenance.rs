@@ -61,7 +61,7 @@ async fn prune_local(config: std::path::PathBuf, dry_run: bool) -> Result<()> {
         active_connection_before: now
             - Duration::days(config.retention.active_connection_days as i64),
     };
-    let store = SessionStore::open(&config.metadata.sqlite_path).await?;
+    let store = SessionStore::open_metadata(&config.metadata).await?;
     let result = store.prune(&cutoffs, dry_run).await?;
     print_prune_result(
         if dry_run { "would_prune" } else { "pruned" },

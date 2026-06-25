@@ -217,7 +217,7 @@ async fn list_users(
 
 async fn open_store(config: PathBuf) -> Result<SessionStore> {
     let config = Config::load(config)?;
-    SessionStore::open(&config.metadata.sqlite_path).await
+    SessionStore::open_metadata(&config.metadata).await
 }
 
 fn read_stdin_secret() -> Result<String> {

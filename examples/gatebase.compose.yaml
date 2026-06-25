@@ -3,7 +3,8 @@ server:
   broker_listen: "0.0.0.0:8080"
 
 metadata:
-  sqlite_path: "/var/lib/gatebase/gatebase.db"
+  backend: "sqlite"
+  url: "sqlite:///var/lib/gatebase/gatebase.db?mode=rwc"
 
 sessions:
   default_ttl: "15m"
@@ -29,8 +30,8 @@ targets:
     upstream: "gatebase-postgres:5432"
     database: "app"
     credentials:
-      username_env: "PG_UPSTREAM_USER"
-      password_env: "PG_UPSTREAM_PASSWORD"
+      username: "${PG_UPSTREAM_USER}"
+      password: "${PG_UPSTREAM_PASSWORD}"
   - name: "prod-mysql"
     engine: "mysql"
     access:
@@ -42,8 +43,8 @@ targets:
     upstream: "gatebase-mysql:3306"
     database: "app"
     credentials:
-      username_env: "MYSQL_UPSTREAM_USER"
-      password_env: "MYSQL_UPSTREAM_PASSWORD"
+      username: "${MYSQL_UPSTREAM_USER}"
+      password: "${MYSQL_UPSTREAM_PASSWORD}"
 
 policies:
   default:

@@ -17,7 +17,7 @@ Most commands take either `--config <path>` or `--broker <url>`:
 
 | Input | Used by | Meaning |
 | --- | --- | --- |
-| `--config <path>` | Runtime and local metadata commands | Load Gatebase YAML, target settings, session signing key path, and SQLite metadata path. |
+| `--config <path>` | Runtime and local metadata commands | Load Gatebase YAML, target settings, session signing key path, and metadata store settings. |
 | `--broker <url>` | Broker API commands | Send HTTP requests to a running broker. If omitted, commands use the URL saved by `gatebase config --broker <url>` where supported. `session create` falls back to `http://127.0.0.1:8080`. |
 
 Set `RUST_LOG` to control CLI and service logging, for example
@@ -31,13 +31,13 @@ writable, the command retries with `sudo install -m 0755`.
 
 ```bash
 gatebase update
-gatebase update --version 0.4.4
+gatebase update --version 0.4.5
 gatebase update --force
 ```
 
 | Flag | Required | Description |
 | --- | --- | --- |
-| `--version <version>` | No | Install a specific release version. Accepts `0.4.4` or `v0.4.4`. Defaults to latest release. |
+| `--version <version>` | No | Install a specific release version. Accepts `0.4.5` or `v0.4.5`. Defaults to latest release. |
 | `--force` | No | Reinstall even when the requested version matches the current binary. |
 
 Supported release archive names follow
@@ -284,13 +284,13 @@ created_at actor target engine decision rows statement
 
 ## `gatebase maintenance prune`
 
-Prunes old rows from the SQLite metadata store using configured retention
+Prunes old rows from the metadata store using configured retention
 windows. Use `--broker` from a laptop against a running broker, or `--config` on
-the server to write SQLite directly. If neither flag is passed, the saved broker
+the server to write metadata directly. If neither flag is passed, the saved broker
 URL is used. This command deletes old audit events, rollback artifacts, expired
 sessions, old access tokens, and closed active-connection rows. After a real
-local prune, it checkpoints WAL and runs `VACUUM` so SQLite can release disk
-space.
+local prune on SQLite, it checkpoints WAL and runs `VACUUM` so SQLite can
+release disk space.
 
 ```bash
 gatebase maintenance prune --config examples/gatebase.yaml --dry-run
@@ -299,7 +299,7 @@ gatebase maintenance prune --broker https://gatebase.example.com --admin-token <
 
 | Flag | Required | Description |
 | --- | --- | --- |
-| `--config <path>` | No | Path to Gatebase YAML config for local SQLite mode. Cannot be combined with `--broker`. |
+| `--config <path>` | No | Path to Gatebase YAML config for local metadata mode. Cannot be combined with `--broker`. |
 | `--broker <url>` | No | Broker base URL for remote API mode. Defaults to saved broker URL. |
 | `--admin-token <token>` | Remote mode | Bearer token from `gatebase login`. Optional once you have run `gatebase login`, which saves the token. Requires `admin`. |
 | `--dry-run` | No | Count rows that would be deleted without deleting or vacuuming. |

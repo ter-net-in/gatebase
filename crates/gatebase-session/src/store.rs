@@ -2,6 +2,7 @@ use anyhow::Result;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use argon2::Argon2;
 use chrono::Utc;
+use gatebase_config::MetadataConfig;
 use gatebase_core::{
     AccessToken, ActiveConnection, AuditEvent, RollbackArtifact, Session, SessionId, User, UserRole,
 };
@@ -20,6 +21,11 @@ pub struct SessionStore {
 impl SessionStore {
     pub async fn open(path: impl AsRef<Path>) -> Result<Self> {
         let metadata = MetadataStore::open_sqlite(path).await?;
+        Ok(Self { metadata })
+    }
+
+    pub async fn open_metadata(config: &MetadataConfig) -> Result<Self> {
+        let metadata = MetadataStore::open(&config.effective_url()).await?;
         Ok(Self { metadata })
     }
 

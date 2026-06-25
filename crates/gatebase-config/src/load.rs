@@ -1,19 +1,22 @@
 use crate::Config;
+use crate::MetadataBackend;
 use anyhow::{Context, Result};
 use gatebase_core::{AccessSignal, DbEngine};
 use std::collections::HashSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 impl Config {
     pub fn load(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         let content = fs::read_to_string(path)
             .with_context(|| format!("failed to read config {}", path.display()))?;
-        let config: Self = serde_yaml::from_str(&content)
+        let mut value: serde_yaml::Value = serde_yaml::from_str(&content)
+            .with_context(|| format!("failed to parse config {}", path.display()))?;
+        expand_env_refs_in_value(&mut value)?;
+        let config: Self = serde_yaml::from_value(value)
             .with_context(|| format!("failed to parse config {}", path.display()))?;
         config.validate()?;
-        config.ensure_state_directory()?;
         Ok(config)
     }
 
@@ -23,6 +26,18 @@ impl Config {
             !self.audit.sinks.is_empty(),
             "at least one audit sink is required"
         );
+        let metadata_url = self.metadata.effective_url();
+        match self.metadata.backend {
+            MetadataBackend::Sqlite => anyhow::ensure!(
+                metadata_url.starts_with("sqlite://"),
+                "metadata backend sqlite requires url starting with sqlite://"
+            ),
+            MetadataBackend::Postgres => anyhow::ensure!(
+                metadata_url.starts_with("postgres://")
+                    || metadata_url.starts_with("postgresql://"),
+                "metadata backend postgres requires url starting with postgres:// or postgresql://"
+            ),
+        }
         let mut repos = HashSet::new();
         for target in &self.targets {
             anyhow::ensure!(
@@ -64,18 +79,6 @@ impl Config {
         Ok(())
     }
 
-    fn ensure_state_directory(&self) -> Result<()> {
-        let Some(parent) = self.metadata.sqlite_path.parent() else {
-            return Ok(());
-        };
-        fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create metadata directory {}", parent.display()))?;
-        if parent == default_state_dir() {
-            set_private_dir_permissions(parent)?;
-        }
-        Ok(())
-    }
-
     pub fn postgres_targets(&self) -> impl Iterator<Item = &crate::TargetConfig> {
         self.targets
             .iter()
@@ -83,23 +86,46 @@ impl Config {
     }
 }
 
-fn default_state_dir() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".gatebase")
+fn expand_env_refs(input: &str) -> Result<String> {
+    let mut output = String::with_capacity(input.len());
+    let mut rest = input;
+    while let Some(start) = rest.find("${") {
+        output.push_str(&rest[..start]);
+        let after_start = &rest[start + 2..];
+        let Some(end) = after_start.find('}') else {
+            anyhow::bail!("unterminated environment reference in config");
+        };
+        let name = &after_start[..end];
+        anyhow::ensure!(!name.is_empty(), "empty environment reference in config");
+        let value = std::env::var(name)
+            .with_context(|| format!("missing environment variable {name} referenced by config"))?;
+        anyhow::ensure!(
+            !value.is_empty(),
+            "environment variable {name} referenced by config is empty"
+        );
+        output.push_str(&value);
+        rest = &after_start[end + 1..];
+    }
+    output.push_str(rest);
+    Ok(output)
 }
 
-#[cfg(unix)]
-fn set_private_dir_permissions(path: &Path) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let permissions = fs::Permissions::from_mode(0o700);
-    fs::set_permissions(path, permissions)
-        .with_context(|| format!("failed to set permissions on {}", path.display()))
-}
-
-#[cfg(not(unix))]
-fn set_private_dir_permissions(_path: &Path) -> Result<()> {
+fn expand_env_refs_in_value(value: &mut serde_yaml::Value) -> Result<()> {
+    match value {
+        serde_yaml::Value::String(string) => {
+            *string = expand_env_refs(string)?;
+        }
+        serde_yaml::Value::Sequence(values) => {
+            for value in values {
+                expand_env_refs_in_value(value)?;
+            }
+        }
+        serde_yaml::Value::Mapping(values) => {
+            for value in values.values_mut() {
+                expand_env_refs_in_value(value)?;
+            }
+        }
+        _ => {}
+    }
     Ok(())
 }

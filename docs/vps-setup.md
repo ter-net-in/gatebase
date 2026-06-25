@@ -138,7 +138,7 @@ Example install:
 
 ```bash
 curl -L -o gatebase.tar.gz \
-  https://github.com/ter-net-in/gatebase/releases/download/v0.4.4/gatebase-0.4.4-x86_64-unknown-linux-gnu.tar.gz
+  https://github.com/ter-net-in/gatebase/releases/download/v0.4.5/gatebase-0.4.5-x86_64-unknown-linux-gnu.tar.gz
 tar -xzf gatebase.tar.gz
 sudo install -m 0755 gatebase /usr/local/bin/gatebase
 ```
@@ -209,7 +209,8 @@ server:
   broker_listen: "127.0.0.1:8080"
 
 metadata:
-  sqlite_path: "/var/lib/gatebase/gatebase.db"
+  backend: "sqlite"
+  url: "sqlite:///var/lib/gatebase/gatebase.db?mode=rwc"
 
 sessions:
   default_ttl: "15m"
@@ -247,8 +248,8 @@ targets:
     upstream: "10.0.0.10:5432"
     database: "app"
     credentials:
-      username_env: "PG_UPSTREAM_USER"
-      password_env: "PG_UPSTREAM_PASSWORD"
+      username: "${PG_UPSTREAM_USER}"
+      password: "${PG_UPSTREAM_PASSWORD}"
 
 policies:
   default:
@@ -284,7 +285,7 @@ Broker and proxies may run on separate servers, but they are not independent
 control planes. They must share state and secrets:
 
 - Use the same `sessions.signing_key_file` content on broker and proxy hosts.
-- Use the same `metadata.sqlite_path` SQLite database from broker and proxy hosts. Current Gatebase metadata is SQLite-only, so split servers need shared storage for that file. Separate local SQLite files will make broker-created sessions invisible to proxies.
+- Use the same metadata store from broker and proxy hosts. Postgres metadata is recommended for split hosts. If you choose SQLite, all hosts need shared storage for the same SQLite file; separate local files will make broker-created sessions invisible to proxies.
 - Run proxy units only on hosts that can reach the upstream database.
 - Set each target's `public_host` and `public_port` to the client-reachable proxy address, not the broker URL.
 
@@ -296,7 +297,8 @@ server:
   broker_listen: "127.0.0.1:8080"
 
 metadata:
-  sqlite_path: "/mnt/gatebase-shared/gatebase.db"
+  backend: "postgres"
+  url: "${GATEBASE_METADATA_URL}"
 
 sessions:
   signing_key_file: "/etc/gatebase/session.key"
@@ -310,8 +312,15 @@ targets:
     upstream: "10.0.0.10:5432"
     database: "app"
     credentials:
-      username_env: "PG_UPSTREAM_USER"
-      password_env: "PG_UPSTREAM_PASSWORD"
+      username: "${PG_UPSTREAM_USER}"
+      password: "${PG_UPSTREAM_PASSWORD}"
+```
+
+For Postgres metadata, add the shared metadata URL to every host's
+`/etc/gatebase/gatebase.env`:
+
+```ini
+GATEBASE_METADATA_URL=postgres://gatebase:change-me@metadata-db.example.com:5432/gatebase
 ```
 
 Run `gatebase broker --config ...` on the broker host. Run `gatebase proxy

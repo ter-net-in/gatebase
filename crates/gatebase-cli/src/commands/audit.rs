@@ -93,7 +93,7 @@ async fn list_from_config(
     limit: u64,
 ) -> Result<Vec<AuditEventOutput>> {
     let config = Config::load(config)?;
-    let store = SessionStore::open(&config.metadata.sqlite_path).await?;
+    let store = SessionStore::open_metadata(&config.metadata).await?;
     Ok(store
         .list_audit_events(AuditEventFilter {
             actor,

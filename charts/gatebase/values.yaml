@@ -41,6 +41,7 @@ persistence:
 secrets:
   existingSecret: ""
   sessionKey: ""
+  metadataUrl: ""
   githubPrivateKey: ""
   postgresUsername: ""
   postgresPassword: ""
@@ -91,7 +92,8 @@ config:
     public_url: "https://gatebase.example.com"
     broker_listen: "0.0.0.0:8080"
   metadata:
-    sqlite_path: "/var/lib/gatebase/gatebase.db"
+    backend: "sqlite"
+    url: "sqlite:///var/lib/gatebase/gatebase.db?mode=rwc"
   sessions:
     default_ttl: "15m"
     max_ttl: "30m"
@@ -127,8 +129,8 @@ config:
       upstream: "postgres.default.svc.cluster.local:5432"
       database: "app"
       credentials:
-        username_env: "PG_UPSTREAM_USER"
-        password_env: "PG_UPSTREAM_PASSWORD"
+        username: "${PG_UPSTREAM_USER}"
+        password: "${PG_UPSTREAM_PASSWORD}"
   policies:
     default:
       block:

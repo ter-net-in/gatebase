@@ -1,0 +1,168 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gatebase.fullname" . }}
+  labels:
+    {{- include "gatebase.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "gatebase.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "gatebase.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "gatebase.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        {{- if .Values.broker.enabled }}
+        - name: broker
+          image: {{ include "gatebase.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["broker", "--config", "/etc/gatebase/gatebase.yaml"]
+          ports:
+            - name: http
+              containerPort: {{ .Values.broker.port }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+          env:
+            {{- include "gatebase.env" . | nindent 12 }}
+          volumeMounts:
+            {{- include "gatebase.volumeMounts" . | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+        {{- end }}
+        {{- if .Values.postgresProxy.enabled }}
+        - name: proxy-postgres
+          image: {{ include "gatebase.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["proxy", "postgres", "--config", "/etc/gatebase/gatebase.yaml"]
+          ports:
+            - name: postgres
+              containerPort: {{ .Values.postgresProxy.port }}
+          livenessProbe:
+            tcpSocket:
+              port: postgres
+          readinessProbe:
+            tcpSocket:
+              port: postgres
+          env:
+            {{- include "gatebase.env" . | nindent 12 }}
+          volumeMounts:
+            {{- include "gatebase.volumeMounts" . | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+        {{- end }}
+        {{- if .Values.mysqlProxy.enabled }}
+        - name: proxy-mysql
+          image: {{ include "gatebase.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["proxy", "mysql", "--config", "/etc/gatebase/gatebase.yaml"]
+          ports:
+            - name: mysql
+              containerPort: {{ .Values.mysqlProxy.port }}
+          livenessProbe:
+            tcpSocket:
+              port: mysql
+          readinessProbe:
+            tcpSocket:
+              port: mysql
+          env:
+            {{- include "gatebase.env" . | nindent 12 }}
+          volumeMounts:
+            {{- include "gatebase.volumeMounts" . | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+        {{- end }}
+      volumes:
+        - name: config
+          secret:
+            secretName: {{ include "gatebase.fullname" . }}-config
+        - name: secrets
+          secret:
+            secretName: {{ include "gatebase.secretName" . }}
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "gatebase.fullname" . }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+{{- define "gatebase.env" -}}
+- name: PG_UPSTREAM_USER
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "gatebase.secretName" . }}
+      key: PG_UPSTREAM_USER
+      optional: true
+- name: PG_UPSTREAM_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "gatebase.secretName" . }}
+      key: PG_UPSTREAM_PASSWORD
+      optional: true
+- name: MYSQL_UPSTREAM_USER
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "gatebase.secretName" . }}
+      key: MYSQL_UPSTREAM_USER
+      optional: true
+- name: MYSQL_UPSTREAM_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "gatebase.secretName" . }}
+      key: MYSQL_UPSTREAM_PASSWORD
+      optional: true
+{{- with .Values.extraEnv }}
+{{- toYaml . }}
+{{- end }}
+{{- end -}}
+
+{{- define "gatebase.volumeMounts" -}}
+- name: config
+  mountPath: /etc/gatebase/gatebase.yaml
+  subPath: gatebase.yaml
+  readOnly: true
+- name: secrets
+  mountPath: /etc/gatebase/secrets
+  readOnly: true
+- name: data
+  mountPath: /var/lib/gatebase
+{{- end -}}

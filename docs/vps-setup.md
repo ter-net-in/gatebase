@@ -278,6 +278,47 @@ Validate:
 sudo -u gatebase /usr/local/bin/gatebase config check --config /etc/gatebase/gatebase.yaml
 ```
 
+### Broker and Proxy on Different Servers
+
+Broker and proxies may run on separate servers, but they are not independent
+control planes. They must share state and secrets:
+
+- Use the same `sessions.signing_key_file` content on broker and proxy hosts.
+- Use the same `metadata.sqlite_path` SQLite database from broker and proxy hosts. Current Gatebase metadata is SQLite-only, so split servers need shared storage for that file. Separate local SQLite files will make broker-created sessions invisible to proxies.
+- Run proxy units only on hosts that can reach the upstream database.
+- Set each target's `public_host` and `public_port` to the client-reachable proxy address, not the broker URL.
+
+Example split target:
+
+```yaml
+server:
+  public_url: "https://broker.example.com"
+  broker_listen: "127.0.0.1:8080"
+
+metadata:
+  sqlite_path: "/mnt/gatebase-shared/gatebase.db"
+
+sessions:
+  signing_key_file: "/etc/gatebase/session.key"
+
+targets:
+  - name: "prod-pg"
+    engine: "postgres"
+    listen: "0.0.0.0:15432"
+    public_host: "proxy-db.example.com"
+    public_port: 15432
+    upstream: "10.0.0.10:5432"
+    database: "app"
+    credentials:
+      username_env: "PG_UPSTREAM_USER"
+      password_env: "PG_UPSTREAM_PASSWORD"
+```
+
+Run `gatebase broker --config ...` on the broker host. Run `gatebase proxy
+postgres --config ...` or `gatebase proxy mysql --config ...` on proxy hosts.
+Keep config values that affect sessions, metadata, targets, policies, audit, and
+rollback in sync across hosts.
+
 Bootstrap the first admin user locally. Replace `change-me` before production use:
 
 ```bash

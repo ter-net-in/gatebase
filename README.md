@@ -19,8 +19,8 @@ every query is policy-checked and audited on the way through.
 
 > **Status: early MVP.** The Postgres simple-query proxy, MySQL text-query proxy,
 > GitHub issue access tokens, local config-allowed sessions, rollback artifacts,
-> web dashboard, self-update, and systemd unit generation work and are covered by
-> tests. The Postgres extended-query protocol, TLS, and native MySQL
+> web dashboard, self-update, systemd unit generation, and Kubernetes Helm chart
+> are implemented. The Postgres extended-query protocol, TLS, and native MySQL
 > password-plugin auth are not implemented yet. See [Status & roadmap](#status--roadmap).
 
 ## Contents
@@ -84,7 +84,7 @@ Gatebase has three runtime parts, all shipped in one binary:
 | --- | --- |
 | **Broker** | Evaluates issue access signals, comments one-time tokens, integrates with GitHub, issues sessions, and enforces admin API RBAC. Exposes the HTTP API. |
 | **Proxy** | Data-plane enforcement. Validates session tokens, applies SQL policy, writes audit events, forwards to the upstream database. |
-| **SQLite store** | Access tokens, sessions, active connections, audit events, and admin users. |
+| **SQLite store** | Access tokens, sessions, active connections, audit events, rollback artifacts, and admin users. |
 
 See [`docs/architecture.md`](docs/architecture.md) for more detail.
 
@@ -292,9 +292,16 @@ never forwarded upstream and are recorded as audit events.
 - **VPS / systemd** — [`docs/vps-setup.md`](docs/vps-setup.md) covers the full
   single-node setup: user and directories, secrets, config, systemd units,
   reverse proxy, firewall, and backups.
+- **Split broker/proxy hosts** — broker and proxies can run on different servers
+  when they share the session signing key and metadata SQLite database. Configure
+  target `public_host`/`public_port` to point at the proxy host. See
+  [`docs/vps-setup.md`](docs/vps-setup.md#broker-and-proxy-on-different-servers).
 - **Generated systemd units** — `gatebase systemd install --config /etc/gatebase/gatebase.yaml --enable --start` writes broker, Postgres proxy, and MySQL proxy units.
 - **Docker Compose** — `docker compose up --build` runs the local demo described
   above.
+- **Kubernetes / Helm** — [`docs/kubernetes.md`](docs/kubernetes.md) covers the
+  Helm chart, Secret setup, proxy Services, Ingress, PVC backups, and
+  NetworkPolicy notes.
 - **Docker image** — the [`Dockerfile`](Dockerfile) builds a slim image with the
   `gatebase` binary as its entrypoint.
 
@@ -324,15 +331,20 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for contribution guidelines.
 
 ## Status & roadmap
 
-**Working today:** broker with GitHub issue access tokens and local config-allowed sessions, Postgres
-simple-query proxy, MySQL text-query proxy (via `mysql_clear_password`), SQLite
-sessions and audit, rollback artifact capture, web dashboard, SQL policy engine,
-TTL and revocation enforcement, CLI self-update, systemd unit generation, and an
-opt-in Docker E2E test suite.
+**Working today:** broker with GitHub issue access tokens and local config-allowed
+sessions, admin RBAC, Postgres simple-query proxy, MySQL text-query proxy (via
+`mysql_clear_password`), SQLite sessions/audit/rollback storage, active
+connection tracking, rollback artifact capture for supported DML, web dashboard,
+SQL policy engine, TTL and revocation enforcement, maintenance pruning, CLI
+self-update, systemd unit generation, Docker image/Compose demo, Kubernetes Helm
+chart, split broker/proxy deployment docs, and an opt-in Docker E2E test suite.
 
 **Not implemented yet:** Postgres extended-query protocol, TLS, native MySQL
 password-plugin auth, GitHub installation-token caching, and richer issue-token
-lifecycle controls.
+lifecycle controls. Admin user disable/password reset endpoints, admin action
+audit events, session disconnect audit reasons, cleaner upstream cancellation for
+long-running queries, and broad rollback support for compound predicates,
+composite keys, and unsafe/non-unique row identity are also future work.
 
 Gatebase does **not** guarantee universal rollback. Generated rollback artifacts
 are best-effort and only safe for constrained DML; WAL/PITR remains the source of
@@ -352,6 +364,7 @@ The full milestone breakdown lives in
 | [`docs/security-model.md`](docs/security-model.md) | Trust assumptions and enforcement model. |
 | [`docs/github-app-setup.md`](docs/github-app-setup.md) | Create and configure the GitHub App. |
 | [`docs/vps-setup.md`](docs/vps-setup.md) | Single-node VPS deployment with systemd. |
+| [`docs/kubernetes.md`](docs/kubernetes.md) | Kubernetes deployment with Helm. |
 | [`docs/implementation-plan.md`](docs/implementation-plan.md) | Roadmap and milestones. |
 
 ## Security

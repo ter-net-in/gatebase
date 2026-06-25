@@ -24,6 +24,7 @@ Implemented:
 - VPS deployment guide with systemd, reverse proxy, firewall, and operations notes.
 - Dockerfile and Docker Compose skeleton.
 - Docker Compose local demo config with bundled Postgres/MySQL targets and generated session key.
+- Helm chart for Kubernetes deployment with broker/proxy pod, Services, PVC, Secret-backed config, optional Ingress, and optional NetworkPolicy.
 - GitHub Actions CI for formatting, Clippy, tests, and `cargo audit`.
 - GitHub Actions release workflow that, on a version bump merged to `main`, tags the version, builds Linux/macOS binaries, publishes a GitHub Release, and pushes a multi-arch image to GHCR.
 - Opt-in Docker integration test covering Postgres and MySQL proxy happy path, policy blocking, and audit emission.

@@ -1,0 +1,20 @@
+Gatebase installed.
+
+Broker service:
+  {{ include "gatebase.fullname" . }}-broker:{{ .Values.broker.service.port }}
+
+{{- if .Values.postgresProxy.enabled }}
+Postgres proxy service:
+  {{ include "gatebase.fullname" . }}-postgres:{{ .Values.postgresProxy.service.port }}
+{{- end }}
+
+{{- if .Values.mysqlProxy.enabled }}
+MySQL proxy service:
+  {{ include "gatebase.fullname" . }}-mysql:{{ .Values.mysqlProxy.service.port }}
+{{- end }}
+
+Create production secrets with:
+  kubectl create secret generic {{ include "gatebase.secretName" . }} \
+    --from-literal=session.key="$(openssl rand -base64 32)" \
+    --from-literal=PG_UPSTREAM_USER="..." \
+    --from-literal=PG_UPSTREAM_PASSWORD="..."

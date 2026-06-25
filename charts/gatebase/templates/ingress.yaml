@@ -1,0 +1,35 @@
+{{- if and .Values.broker.enabled .Values.broker.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "gatebase.fullname" . }}
+  labels:
+    {{- include "gatebase.labels" . | nindent 4 }}
+  {{- with .Values.broker.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.broker.ingress.className }}
+  ingressClassName: {{ .Values.broker.ingress.className }}
+  {{- end }}
+  {{- with .Values.broker.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range .Values.broker.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "gatebase.fullname" $ }}-broker
+                port:
+                  name: http
+          {{- end }}
+    {{- end }}
+{{- end }}

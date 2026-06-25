@@ -65,6 +65,11 @@ If `metadata` or `metadata.sqlite_path` is omitted, Gatebase uses
 same file. With systemd, `~` belongs to the service user, not the admin invoking
 commands.
 
+For broker/proxy split-server deployments, the metadata path must still point to
+the same SQLite database from every host. Gatebase currently has no remote
+metadata service; separate local SQLite files will break session lookup,
+revocation, active-connection tracking, and SQLite audit/rollback visibility.
+
 ## `sessions`
 
 Session TTL and signing-key settings. The signing key is used to issue tokens
@@ -84,6 +89,11 @@ sessions:
   max_ttl: "30m"
   signing_key_file: "/var/lib/gatebase/session.key"
 ```
+
+Broker and proxies must read the same signing key content. On split servers,
+copy the key securely or mount it from the same secret store. Rotating this key
+invalidates existing session tokens unless every process is updated in a
+coordinated restart.
 
 ## `github`
 
@@ -229,6 +239,10 @@ release disk space.
 
 Database targets exposed through Gatebase proxies. A session request must name
 one of these targets with `--target <name>`.
+
+In split broker/proxy deployments, `listen` is the socket used by the proxy
+process on the proxy host. `public_host` and `public_port` are the address and
+port clients receive from the broker in generated connection strings.
 
 | Field | Required | Default | Description |
 | --- | --- | --- | --- |

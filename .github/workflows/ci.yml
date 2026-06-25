@@ -25,3 +25,12 @@ jobs:
         run: cargo install cargo-audit --locked
       - name: Audit
         run: cargo audit
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Helm lint
+        run: helm lint charts/gatebase
+      - name: Helm template
+        run: helm template gatebase charts/gatebase

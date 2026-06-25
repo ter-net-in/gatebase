@@ -1,0 +1,16 @@
+{{- if .Values.postgresProxy.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gatebase.fullname" . }}-postgres
+  labels:
+    {{- include "gatebase.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.postgresProxy.service.type }}
+  ports:
+    - name: postgres
+      port: {{ .Values.postgresProxy.service.port }}
+      targetPort: postgres
+  selector:
+    {{- include "gatebase.selectorLabels" . | nindent 4 }}
+{{- end }}

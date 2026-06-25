@@ -1,0 +1,144 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/ter-net-in/gatebase
+  tag: ""
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  fsGroup: 10001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+resources: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+persistence:
+  enabled: true
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+  storageClass: ""
+
+secrets:
+  existingSecret: ""
+  sessionKey: ""
+  githubPrivateKey: ""
+  postgresUsername: ""
+  postgresPassword: ""
+  mysqlUsername: ""
+  mysqlPassword: ""
+
+broker:
+  enabled: true
+  port: 8080
+  service:
+    type: ClusterIP
+    port: 8080
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts:
+      - host: gatebase.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
+
+postgresProxy:
+  enabled: true
+  port: 15432
+  service:
+    type: LoadBalancer
+    port: 15432
+
+mysqlProxy:
+  enabled: false
+  port: 13306
+  service:
+    type: LoadBalancer
+    port: 13306
+
+networkPolicy:
+  enabled: false
+  brokerIngressFrom: []
+  proxyIngressFrom: []
+  egress: []
+
+extraEnv: []
+
+config:
+  server:
+    public_url: "https://gatebase.example.com"
+    broker_listen: "0.0.0.0:8080"
+  metadata:
+    sqlite_path: "/var/lib/gatebase/gatebase.db"
+  sessions:
+    default_ttl: "15m"
+    max_ttl: "30m"
+    signing_key_file: "/etc/gatebase/secrets/session.key"
+  audit:
+    fail_closed: true
+    sinks:
+      - type: "sqlite"
+      - type: "jsonl"
+        path: "/var/lib/gatebase/audit.jsonl"
+  rollback:
+    enabled: false
+    max_rows: 100
+    sinks:
+      - type: "sqlite"
+      - type: "jsonl"
+        path: "/var/lib/gatebase/rollback.jsonl"
+  retention:
+    audit_days: 90
+    rollback_days: 30
+    session_days: 30
+    approval_days: 30
+    active_connection_days: 7
+  targets:
+    - name: "prod-pg"
+      engine: "postgres"
+      access:
+        github_repo: "org/prod-pg-access"
+        allow_cli_sessions: true
+      listen: "0.0.0.0:15432"
+      public_host: "gatebase-postgres.example.com"
+      public_port: 15432
+      upstream: "postgres.default.svc.cluster.local:5432"
+      database: "app"
+      credentials:
+        username_env: "PG_UPSTREAM_USER"
+        password_env: "PG_UPSTREAM_PASSWORD"
+  policies:
+    default:
+      block:
+        - "drop_database"
+        - "drop_table"
+        - "truncate"
+        - "alter_system"
+        - "set_global"
+        - "load_data"
+      require_where:
+        - "update"
+        - "delete"
+      max_rows_changed: 1000

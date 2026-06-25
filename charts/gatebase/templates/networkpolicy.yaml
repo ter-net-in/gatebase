@@ -1,0 +1,42 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "gatebase.fullname" . }}
+  labels:
+    {{- include "gatebase.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "gatebase.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: {{ .Values.broker.port }}
+      {{- with .Values.networkPolicy.brokerIngressFrom }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    - ports:
+        {{- if .Values.postgresProxy.enabled }}
+        - protocol: TCP
+          port: {{ .Values.postgresProxy.port }}
+        {{- end }}
+        {{- if .Values.mysqlProxy.enabled }}
+        - protocol: TCP
+          port: {{ .Values.mysqlProxy.port }}
+        {{- end }}
+      {{- with .Values.networkPolicy.proxyIngressFrom }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  egress:
+    {{- if .Values.networkPolicy.egress }}
+    {{- toYaml .Values.networkPolicy.egress | nindent 4 }}
+    {{- else }}
+    - {}
+    {{- end }}
+{{- end }}

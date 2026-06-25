@@ -281,7 +281,7 @@ fn parse_delete(statement: &str) -> RollbackRequest {
     let Some((table, after_table)) = take_ident(rest) else {
         return RollbackRequest::manual(RollbackOperation::Delete);
     };
-    let Some((column, values)) = parse_where_in(after_table.trim_start()) else {
+    let Some((column, values)) = parse_where_predicate(after_table.trim_start()) else {
         return RollbackRequest::manual_with_table(RollbackOperation::Delete, table);
     };
     RollbackRequest {
@@ -302,7 +302,7 @@ fn parse_update(statement: &str) -> RollbackRequest {
         return RollbackRequest::manual_with_table(RollbackOperation::Update, table);
     };
     let where_clause = after_table[where_index..].trim_start();
-    let Some((column, values)) = parse_where_in(where_clause) else {
+    let Some((column, values)) = parse_where_predicate(where_clause) else {
         return RollbackRequest::manual_with_table(RollbackOperation::Update, table);
     };
     RollbackRequest {
@@ -313,40 +313,68 @@ fn parse_update(statement: &str) -> RollbackRequest {
     }
 }
 
-fn parse_where_in(where_clause: &str) -> Option<(String, Vec<String>)> {
+fn parse_where_predicate(where_clause: &str) -> Option<(String, Vec<String>)> {
     let lower = where_clause.to_ascii_lowercase();
     let rest = lower.strip_prefix("where ")?;
-    let in_index = rest.find(" in ")?;
-    let column = where_clause["where ".len().."where ".len() + in_index]
+    if let Some(in_index) = rest.find(" in ") {
+        let column = where_clause["where ".len().."where ".len() + in_index]
+            .trim()
+            .trim_matches('`')
+            .to_owned();
+        let values_start = where_clause.find('(')?;
+        let values_end = where_clause.rfind(')')?;
+        if values_end <= values_start || !where_clause[values_end + 1..].trim().is_empty() {
+            return None;
+        }
+        let values: Vec<String> = where_clause[values_start + 1..values_end]
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .collect();
+        return if values.is_empty() {
+            None
+        } else {
+            Some((column, values))
+        };
+    }
+
+    let eq_index = rest.find('=')?;
+    let column = where_clause["where ".len().."where ".len() + eq_index]
         .trim()
         .trim_matches('`')
         .to_owned();
-    let values_start = where_clause.find('(')?;
-    let values_end = where_clause.rfind(')')?;
-    if values_end <= values_start {
+    let value = where_clause["where ".len() + eq_index + 1..].trim();
+    if column.is_empty()
+        || value.is_empty()
+        || value.to_ascii_lowercase().contains(" and ")
+        || value.to_ascii_lowercase().contains(" or ")
+    {
         return None;
     }
-    let values: Vec<String> = where_clause[values_start + 1..values_end]
-        .split(',')
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
-        .collect();
-    if values.is_empty() {
-        None
-    } else {
-        Some((column, values))
-    }
+    Some((column, vec![value.to_owned()]))
 }
 
 fn take_ident(input: &str) -> Option<(String, &str)> {
     let input = input.trim_start();
+    let (first, rest) = take_ident_segment(input)?;
+    let rest = rest.trim_start();
+    if let Some(after_dot) = rest.strip_prefix('.') {
+        let (second, rest) = take_ident_segment(after_dot)?;
+        Some((format!("{first}.{second}"), rest))
+    } else {
+        Some((first, rest))
+    }
+}
+
+fn take_ident_segment(input: &str) -> Option<(String, &str)> {
+    let input = input.trim_start();
     if let Some(rest) = input.strip_prefix('`') {
-        let end = rest.find('`')? + 1;
-        return Some((input[1..end].to_owned(), &input[end + 1..]));
+        let end = rest.find('`')?;
+        return Some((rest[..end].to_owned(), &rest[end + 1..]));
     }
     let end = input
-        .find(|character: char| character.is_whitespace())
+        .find(|character: char| character.is_whitespace() || character == '.')
         .unwrap_or(input.len());
     let ident = input[..end].trim();
     if ident.is_empty() {
@@ -488,4 +516,65 @@ impl RollbackRequest {
 enum RollbackOperation {
     Delete,
     Update,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn take_ident_reads_qualified_identifiers() {
+        assert_eq!(
+            take_ident("`public`.`cli_tokens` WHERE id = 1").unwrap().0,
+            "public.cli_tokens"
+        );
+        assert_eq!(
+            take_ident("public.users WHERE id = 1").unwrap().0,
+            "public.users"
+        );
+        assert_eq!(take_ident("`users` WHERE id = 1").unwrap().0, "users");
+        assert_eq!(take_ident("users WHERE id = 1").unwrap().0, "users");
+        assert_eq!(
+            split_table_name("public.cli_tokens"),
+            (Some("public"), "cli_tokens")
+        );
+    }
+
+    #[test]
+    fn parse_where_predicate_reads_in_and_equals() {
+        assert_eq!(
+            parse_where_predicate("WHERE `id` = 'x'").unwrap(),
+            ("id".to_owned(), vec!["'x'".to_owned()])
+        );
+        assert_eq!(
+            parse_where_predicate("WHERE id IN (1,2)").unwrap(),
+            ("id".to_owned(), vec!["1".to_owned(), "2".to_owned()])
+        );
+        assert!(parse_where_predicate("WHERE id = 1 AND other = 2").is_none());
+    }
+
+    #[test]
+    fn parse_delete_reads_qualified_equals_predicate() {
+        let request = parse_delete("DELETE FROM `public`.`cli_tokens` WHERE `id` = 'x'");
+        assert_eq!(request.table.as_deref(), Some("public.cli_tokens"));
+        assert_eq!(request.where_column.as_deref(), Some("id"));
+        assert_eq!(request.where_values, Some(vec!["'x'".to_owned()]));
+    }
+
+    #[test]
+    fn parse_update_reads_qualified_equals_predicate() {
+        let request = parse_update("UPDATE `public`.`cli_tokens` SET name = 'y' WHERE `id` = 'x'");
+        assert_eq!(request.table.as_deref(), Some("public.cli_tokens"));
+        assert_eq!(request.where_column.as_deref(), Some("id"));
+        assert_eq!(request.where_values, Some(vec!["'x'".to_owned()]));
+    }
+
+    #[test]
+    fn parse_delete_keeps_unsupported_shape_manual() {
+        let request =
+            parse_delete("DELETE FROM `public`.`cli_tokens` WHERE `id` = 'x' AND name = 'y'");
+        assert_eq!(request.table.as_deref(), Some("public.cli_tokens"));
+        assert_eq!(request.where_column, None);
+        assert_eq!(request.where_values, None);
+    }
 }
